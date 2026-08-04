@@ -68,7 +68,38 @@ class ObservationStoreTests(unittest.TestCase):
         snapshot = store.snapshot()
         self.assertIsNone(snapshot.bankroll)
         self.assertEqual(snapshot.map_items, ())
+        self.assertIsNone(snapshot.map_rows)
+        self.assertFalse(snapshot.map_height_exact)
+        self.assertFalse(snapshot.pre_bid_confirmed)
         self.assertTrue(np.all(frame == 42), "store must own its frame copy")
+
+    def test_automatic_scan_proof_stays_distinct_from_human_confirmation(self) -> None:
+        store = ObservationStore()
+        store.apply_automatic_scan_proof(
+            round_number=2,
+            map_rows=14,
+            complete=True,
+            pre_bid=True,
+        )
+        snapshot = store.snapshot()
+        self.assertEqual(snapshot.round_number, 2)
+        self.assertEqual(snapshot.map_rows, 14)
+        self.assertFalse(snapshot.map_height_exact)
+        self.assertEqual(snapshot.map_rows_source, "automatic_scroll_estimate")
+        self.assertEqual(snapshot.completeness_source, "automatic_scroll_scan")
+        self.assertEqual(snapshot.pre_bid_source, "visual_state_machine")
+
+        store.correct_map_extent(13, True)
+        self.assertEqual(store.snapshot().map_rows_source, "human_confirmed")
+        self.assertTrue(store.snapshot().map_height_exact)
+        store.apply_automatic_scan_proof(
+            round_number=2,
+            map_rows=15,
+            complete=True,
+            pre_bid=True,
+        )
+        self.assertEqual(store.snapshot().map_rows, 13)
+        self.assertTrue(store.snapshot().map_height_exact)
 
 
 if __name__ == "__main__":

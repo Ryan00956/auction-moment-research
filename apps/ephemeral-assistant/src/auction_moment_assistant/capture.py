@@ -20,6 +20,15 @@ class FrameSource(Protocol):
     def capture(self) -> np.ndarray: ...
 
 
+class MapScrollSource(FrameSource, Protocol):
+    def swipe_map(
+        self,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        duration_ms: int,
+    ) -> None: ...
+
+
 def run_adb(
     adb: str,
     serial: str,
@@ -105,6 +114,39 @@ class AdbFrameSource:
                 f"截图尺寸为 {image.size}，当前只校准到 {self.expected_size}"
             )
         return np.asarray(image, dtype=np.uint8).copy()
+
+    def swipe_map(
+        self,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        duration_ms: int,
+    ) -> None:
+        """Perform only a calibrated swipe inside the left map viewport."""
+
+        if not self.serial:
+            self.connect()
+        gesture = (tuple(start), tuple(end), int(duration_ms))
+        allowed = {
+            ((340, 220), (340, 630), 420),
+            ((340, 560), (340, 320), 650),
+        }
+        if gesture not in allowed:
+            raise CaptureError("公开助手只允许两种固定的地图区域滚动手势")
+        run_adb(
+            self.adb,
+            self.serial,
+            [
+                "shell",
+                "input",
+                "swipe",
+                str(int(start[0])),
+                str(int(start[1])),
+                str(int(end[0])),
+                str(int(end[1])),
+                str(int(duration_ms)),
+            ],
+            timeout=10,
+        )
 
 
 @dataclass

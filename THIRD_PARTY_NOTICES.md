@@ -27,3 +27,12 @@ The assistant may install PyTorch, Torchvision, and ONNX Runtime as separate
 runtime dependencies. Those packages are not redistributed in this repository
 or in the model-only Release bundle. Their own license files remain
 authoritative.
+## Treasure catalog thumbnails
+
+The 80x80 treasure thumbnails under
+`apps/ephemeral-assistant/src/auction_moment_assistant/catalog_previews/` are
+derived from in-game catalog artwork and are included for identification and
+interoperability in the manual OCR correction interface. They are not licensed
+under Apache-2.0, AGPL-3.0, or CC BY 4.0 by this repository. All rights in the
+underlying game artwork, names, and trademarks remain with their respective
+owners.

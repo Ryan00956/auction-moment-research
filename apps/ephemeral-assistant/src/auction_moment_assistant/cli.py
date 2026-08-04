@@ -6,7 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from .capture import AdbFrameSource
 from .models import (
     ModelError,
     download_models,
@@ -14,12 +13,6 @@ from .models import (
     load_release_manifest,
     verify_model_directory,
 )
-from .observations import ObservationStore
-from .ocr import FixedLayoutOCR
-from .predictor import EmpiricalWorldPredictor
-from .runtime import CapturePipeline, InferenceCoordinator
-from .ui import AssistantWindow
-from .vision import UltralyticsVisionBackend, VisionRecognizer
 
 
 def default_treasures_path() -> Path:
@@ -35,7 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--models",
         type=Path,
         default=Path(
-            os.environ.get("AUCTION_ASSISTANT_MODELS", "models/vision-models-v1.0.0")
+            os.environ.get(
+                "AUCTION_ASSISTANT_MODELS",
+                "models/latest-model-v6-v2.0.0-beta.6",
+            )
         ),
     )
     parser.add_argument("--model-manifest", type=Path)
@@ -49,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--serial", default="")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--minimum-ocr-confidence", type=float, default=0.85)
+    parser.add_argument(
+        "--bid-safety-factor",
+        type=float,
+        default=0.90,
+        help="仅展示用建议最高出价系数，默认取 P10 的 90%%",
+    )
     parser.add_argument("--no-ocr", action="store_true")
     parser.add_argument("--no-vision", action="store_true")
     return parser
@@ -78,11 +80,22 @@ def run(args: argparse.Namespace) -> int:
             )
         )
         return 0
+    from .capture import AdbFrameSource
+    from .latest_model import LatestV6V2Predictor
+    from .observations import ObservationStore
+    from .ocr import FixedLayoutOCR
+    from .runtime import CapturePipeline, InferenceCoordinator
+    from .ui import AssistantWindow
+    from .vision import UltralyticsVisionBackend, VisionRecognizer
+
     catalog = load_catalog(args.treasures)
-    predictor = EmpiricalWorldPredictor(
-        args.treasures,
-        catalog,
-        world_model_path=model_paths["probabilistic_world_model"],
+    predictor = LatestV6V2Predictor(
+        v6_model_path=model_paths["latest_value_model_v6"],
+        world_model_v2_path=model_paths["generative_world_model_v2"],
+        treasures_csv=args.treasures,
+        catalog=catalog,
+        minimum_ocr_confidence=args.minimum_ocr_confidence,
+        bid_safety_factor=args.bid_safety_factor,
     )
     source = AdbFrameSource(adb=args.adb, serial=args.serial)
     ocr = (

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import math
 import random
-from collections import Counter, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -43,6 +45,17 @@ class PredictionResult:
     actionable: bool
     issues: tuple[str, ...]
     contract: str = "empirical_compatible_worlds_uncalibrated"
+    v6_prediction: int | None = None
+    v2_prediction: int | None = None
+    generation_weight: float | None = None
+    model_version: str | None = None
+    estimate_source: str | None = None
+    recommended_bid: int | None = None
+    bid_safety_factor: float | None = None
+    required_winning_multiplier: float | None = None
+    maximum_opponent_bid: int | None = None
+    bid_basis: str | None = None
+    diagnostics: tuple[str, ...] = ()
 
 
 class EmpiricalWorldPredictor:
@@ -60,6 +73,9 @@ class EmpiricalWorldPredictor:
         *,
         world_model_path: Path | None = None,
         prior_samples: int = 2048,
+        conditional_resample_max_draws: int = 32768,
+        conditional_resample_target: int = 32,
+        conditional_resample_batch_size: int = 2048,
     ) -> None:
         self.catalog = tuple(catalog)
         self.index_by_id = {
@@ -85,22 +101,36 @@ class EmpiricalWorldPredictor:
         )
         self.empirical_world_count = len(empirical_counts)
         prior_counts = np.empty((0, len(self.catalog)), dtype=np.int16)
+        self.world_model_version = "none"
+        self._world_model = None
         if world_model_path is not None:
             try:
-                from auction_moment_research.world_model import (
-                    ProbabilisticWorldModel,
+                payload = json.loads(
+                    Path(world_model_path).read_text(encoding="utf-8")
                 )
-            except ImportError as exc:
-                raise PredictionError(
-                    "加载 Release 世界模型需要先安装仓库根目录研究包"
-                ) from exc
-            try:
-                model = ProbabilisticWorldModel.load(
-                    Path(world_model_path), self.catalog
-                )
+                schema = str(payload.get("schema_version") or "")
+                if schema == "world-model-v2":
+                    from generative_world_model_v2 import GenerativeWorldModelV2
+
+                    model = GenerativeWorldModelV2.load(
+                        Path(world_model_path), self.catalog
+                    )
+                    self.world_model_version = "world_model_v2"
+                else:
+                    from auction_moment_research.world_model import (
+                        ProbabilisticWorldModel,
+                    )
+
+                    model = ProbabilisticWorldModel.load(
+                        Path(world_model_path), self.catalog
+                    )
+                    self.world_model_version = (
+                        schema.replace("-", "_") if schema else "world_model_v1"
+                    )
             except Exception as exc:
                 raise PredictionError(f"世界模型加载失败：{exc}") from exc
             rng = random.Random(20260804)
+            self._world_model = model
             prior_counts = np.asarray(
                 [
                     model.sample_prior_counts(rng)
@@ -109,6 +139,18 @@ class EmpiricalWorldPredictor:
                 dtype=np.int16,
             )
         self.prior_world_count = len(prior_counts)
+        self.conditional_resample_max_draws = max(
+            0, int(conditional_resample_max_draws)
+        )
+        self.conditional_resample_target = max(
+            1, int(conditional_resample_target)
+        )
+        self.conditional_resample_batch_size = max(
+            1, int(conditional_resample_batch_size)
+        )
+        self._conditional_cache: OrderedDict[
+            str, tuple[np.ndarray, int]
+        ] = OrderedDict()
         self.world_counts = (
             np.concatenate([empirical_counts, prior_counts], axis=0)
             if len(prior_counts)
@@ -139,8 +181,14 @@ class EmpiricalWorldPredictor:
             for height in range(1, 4)
         }
 
-    def _aggregate(self, mask: np.ndarray):
-        selected = self.world_counts[:, mask].astype(np.int64)
+    def _aggregate(
+        self,
+        mask: np.ndarray,
+        *,
+        world_counts: np.ndarray | None = None,
+    ):
+        population = self.world_counts if world_counts is None else world_counts
+        selected = population[:, mask].astype(np.int64)
         return (
             selected.sum(axis=1),
             selected @ self.values[mask],
@@ -172,7 +220,16 @@ class EmpiricalWorldPredictor:
         self,
         mask: np.ndarray,
         semantics: Mapping,
+        *,
+        world_counts: np.ndarray | None = None,
+        total_counts: np.ndarray | None = None,
+        total_values: np.ndarray | None = None,
+        total_areas: np.ndarray | None = None,
     ) -> np.ndarray:
+        population = self.world_counts if world_counts is None else world_counts
+        population_counts = self.total_counts if total_counts is None else total_counts
+        population_values = self.total_values if total_values is None else total_values
+        population_areas = self.total_areas if total_areas is None else total_areas
         effect = str(semantics.get("effect") or "unparsed")
         if effect in INFORMATIONAL_EFFECTS:
             return mask
@@ -186,12 +243,14 @@ class EmpiricalWorldPredictor:
         else:
             group_mask = None
         if group_mask is not None:
-            count, value, area = self._aggregate(group_mask)
+            count, value, area = self._aggregate(
+                group_mask, world_counts=population
+            )
         else:
             count, value, area = (
-                self.total_counts,
-                self.total_values,
-                self.total_areas,
+                population_counts,
+                population_values,
+                population_areas,
             )
         if effect in {"quality_item_count", "size_item_count", "total_item_count"}:
             return mask & (count == int(semantics["observed_count"]))
@@ -218,12 +277,12 @@ class EmpiricalWorldPredictor:
                 self._floor_area_average_hundredths(area, count) == observed
             )
         if effect == "max_item_value":
-            present = self.world_counts > 0
+            present = population > 0
             maximum = np.where(present, self.values, -1).max(axis=1)
             return mask & (maximum == int(semantics["observed_value"]))
         if effect == "max_value_per_cell":
             per_cell = self.values // self.areas
-            present = self.world_counts > 0
+            present = population > 0
             maximum = np.where(present, per_cell, -1).max(axis=1)
             return mask & (maximum == int(semantics["observed_value"]))
         if effect == "highest_quality":
@@ -231,7 +290,7 @@ class EmpiricalWorldPredictor:
             observed_index = QUALITY_ORDER.index(observed_quality)
             quality_present = np.column_stack(
                 [
-                    self.world_counts[:, quality_mask].sum(axis=1) > 0
+                    population[:, quality_mask].sum(axis=1) > 0
                     for quality_mask in self.quality_masks.values()
                 ]
             )
@@ -244,14 +303,33 @@ class EmpiricalWorldPredictor:
         return mask
 
     def _apply_visible_items(
-        self, mask: np.ndarray, items: Iterable[Mapping]
+        self,
+        mask: np.ndarray,
+        items: Iterable[Mapping],
+        diagnostics: list[str] | None = None,
+        *,
+        world_counts: np.ndarray | None = None,
+        total_counts: np.ndarray | None = None,
     ) -> np.ndarray:
+        population = self.world_counts if world_counts is None else world_counts
+        population_counts = self.total_counts if total_counts is None else total_counts
         identity_minimum: Counter[str] = Counter()
         quality_minimum: Counter[str] = Counter()
         size_minimum: Counter[tuple[int, int]] = Counter()
         joint_minimum: Counter[tuple[str, int, int]] = Counter()
+        minimum_visible_item_count = 0
         for item in items:
-            catalog_id = str(item.get("catalog_id") or "")
+            human_locked = bool(item.get("human_locked"))
+            confidence = float(item.get("confidence") or 0.0)
+            if not human_locked and confidence < 0.85:
+                continue
+            minimum_visible_item_count += 1
+            spatial = str(item.get("spatial") or "top_left")
+            catalog_id = (
+                str(item.get("catalog_id") or "")
+                if spatial == "complete"
+                else ""
+            )
             quality = str(item.get("quality") or "")
             width = int(item.get("width") or 0)
             height = int(item.get("height") or 0)
@@ -259,50 +337,256 @@ class EmpiricalWorldPredictor:
                 identity_minimum[catalog_id] += 1
             if quality:
                 quality_minimum[quality] += 1
-            if width and height:
+            if spatial in {"outline", "complete"} and width and height:
                 size_minimum[(width, height)] += 1
-            if quality and width and height:
+            if (
+                spatial in {"outline", "complete"}
+                and quality
+                and width
+                and height
+            ):
                 joint_minimum[(quality, width, height)] += 1
+        def constrain(condition: np.ndarray, label: str) -> None:
+            nonlocal mask
+            had_candidates = bool(np.any(mask))
+            mask = mask & condition
+            if diagnostics is not None and had_candidates and not np.any(mask):
+                diagnostics.append(label)
+
+        constrain(
+            population_counts >= minimum_visible_item_count,
+            f"map_conflict:visible_count:{minimum_visible_item_count}",
+        )
         for catalog_id, minimum in identity_minimum.items():
             index = self.index_by_id.get(catalog_id)
             if index is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, index] >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_identity:{catalog_id}",
+                )
+                continue
+            constrain(
+                population[:, index] >= minimum,
+                f"map_conflict:identity:{catalog_id}:{minimum}",
+            )
         for quality, minimum in quality_minimum.items():
             group = self.quality_masks.get(quality)
             if group is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_quality:{quality}",
+                )
+                continue
+            constrain(
+                population[:, group].sum(axis=1) >= minimum,
+                f"map_conflict:quality:{quality}:{minimum}",
+            )
         for size, minimum in size_minimum.items():
             group = self.size_masks.get(size)
             if group is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_size:{size[0]}x{size[1]}",
+                )
+                continue
+            constrain(
+                population[:, group].sum(axis=1) >= minimum,
+                f"map_conflict:size:{size[0]}x{size[1]}:{minimum}",
+            )
         for (quality, width, height), minimum in joint_minimum.items():
             group = self.quality_masks[quality] & self.size_masks[(width, height)]
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+            constrain(
+                population[:, group].sum(axis=1) >= minimum,
+                (
+                    f"map_conflict:quality_size:{quality}:"
+                    f"{width}x{height}:{minimum}"
+                ),
+            )
         return mask
 
-    def predict(self, snapshot: ObservationSnapshot) -> PredictionResult:
-        mask = np.ones(len(self.world_counts), dtype=bool)
-        issues = []
+    def _filter_population(
+        self,
+        snapshot: ObservationSnapshot,
+        world_counts: np.ndarray,
+        *,
+        issues: list[str] | None = None,
+        diagnostics: list[str] | None = None,
+    ) -> np.ndarray:
+        population = np.asarray(world_counts, dtype=np.int16)
+        total_counts = population.sum(axis=1, dtype=np.int64)
+        total_values = population @ self.values
+        total_areas = population @ self.areas.astype(np.int64)
+        mask = np.ones(len(population), dtype=bool)
         current_events = [
             event
             for event in snapshot.events
             if int(event["round_number"]) <= snapshot.round_number
         ]
-        if len(current_events) < snapshot.round_number * 2:
+        if issues is not None and len(current_events) < snapshot.round_number * 2:
             issues.append("missing_event")
         for event in current_events:
             semantics = event.get("semantics") or {}
             if not semantics.get("parsed"):
-                issues.append(
-                    f"unparsed_event:R{event['round_number']}:{event['kind']}"
-                )
+                if issues is not None:
+                    issues.append(
+                        f"unparsed_event:R{event['round_number']}:{event['kind']}"
+                    )
                 continue
-            mask = self._apply_event(mask, semantics)
-        mask = self._apply_visible_items(mask, snapshot.map_items)
-        compatible = self.total_values[mask]
+            updated = self._apply_event(
+                mask,
+                semantics,
+                world_counts=population,
+                total_counts=total_counts,
+                total_values=total_values,
+                total_areas=total_areas,
+            )
+            if diagnostics is not None and np.any(mask) and not np.any(updated):
+                diagnostic = (
+                    "event_conflict:"
+                    f"R{event['round_number']}:"
+                    f"{event['kind']}:"
+                    f"{semantics.get('effect') or 'unparsed'}"
+                )
+                observed = next(
+                    (
+                        semantics.get(key)
+                        for key in (
+                            "observed_count",
+                            "observed_value",
+                            "observed_cells",
+                            "observed_average_cells",
+                            "observed_quality",
+                        )
+                        if semantics.get(key) is not None
+                    ),
+                    None,
+                )
+                if observed is not None:
+                    diagnostic += f":{observed}"
+                diagnostics.append(diagnostic)
+            mask = updated
+        return self._apply_visible_items(
+            mask,
+            snapshot.map_items,
+            diagnostics,
+            world_counts=population,
+            total_counts=total_counts,
+        )
+
+    @staticmethod
+    def _conditioning_signature(snapshot: ObservationSnapshot) -> str:
+        payload = {
+            "round_number": snapshot.round_number,
+            "events": [
+                {
+                    "round_number": event.get("round_number"),
+                    "kind": event.get("kind"),
+                    "semantics": event.get("semantics") or {},
+                }
+                for event in snapshot.events
+                if int(event["round_number"]) <= snapshot.round_number
+            ],
+            "map_items": [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "row",
+                        "column",
+                        "width",
+                        "height",
+                        "quality",
+                        "catalog_id",
+                        "confidence",
+                        "spatial",
+                        "human_locked",
+                    )
+                }
+                for item in snapshot.map_items
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _conditioned_resample(
+        self,
+        snapshot: ObservationSnapshot,
+    ) -> tuple[np.ndarray, int]:
+        if self._world_model is None or self.conditional_resample_max_draws <= 0:
+            return np.empty((0, len(self.catalog)), dtype=np.int16), 0
+        signature = self._conditioning_signature(snapshot)
+        cached = self._conditional_cache.get(signature)
+        if cached is not None:
+            self._conditional_cache.move_to_end(signature)
+            return cached
+
+        rng = random.Random(int(signature[:16], 16) ^ 20260804)
+        accepted: list[np.ndarray] = []
+        accepted_count = 0
+        draws = 0
+        while (
+            draws < self.conditional_resample_max_draws
+            and accepted_count < self.conditional_resample_target
+        ):
+            batch_size = min(
+                self.conditional_resample_batch_size,
+                self.conditional_resample_max_draws - draws,
+            )
+            batch = np.asarray(
+                [
+                    self._world_model.sample_prior_counts(rng)
+                    for _ in range(batch_size)
+                ],
+                dtype=np.int16,
+            )
+            draws += batch_size
+            mask = self._filter_population(snapshot, batch)
+            if np.any(mask):
+                selected = batch[mask]
+                accepted.append(selected)
+                accepted_count += len(selected)
+        compatible = (
+            np.concatenate(accepted, axis=0)
+            if accepted
+            else np.empty((0, len(self.catalog)), dtype=np.int16)
+        )
+        result = (compatible, draws)
+        self._conditional_cache[signature] = result
+        self._conditional_cache.move_to_end(signature)
+        while len(self._conditional_cache) > 8:
+            self._conditional_cache.popitem(last=False)
+        return result
+
+    def predict(self, snapshot: ObservationSnapshot) -> PredictionResult:
+        issues = []
+        diagnostics: list[str] = []
+        mask = self._filter_population(
+            snapshot,
+            self.world_counts,
+            issues=issues,
+            diagnostics=diagnostics,
+        )
+        compatible_counts = self.world_counts[mask]
+        resampled = False
+        resample_draws = 0
+        if compatible_counts.size == 0:
+            compatible_counts, resample_draws = self._conditioned_resample(snapshot)
+            if compatible_counts.size:
+                resampled = True
+                diagnostics = [
+                    *(f"particle_collapse:{value}" for value in diagnostics),
+                    f"conditioned_resample:{resample_draws}:{len(compatible_counts)}",
+                ]
+                issues.append("conditioned_resample_provisional")
+            elif resample_draws:
+                diagnostics.append(
+                    f"conditioned_resample_exhausted:{resample_draws}"
+                )
+        compatible = compatible_counts.astype(np.int64) @ self.values
         if compatible.size == 0:
             status = "constraint_conflict"
             issues.append("no_compatible_public_world")
@@ -318,7 +602,9 @@ class EmpiricalWorldPredictor:
                 int(compatible.min()),
                 int(compatible.max()),
             )
-            if issues:
+            if resampled:
+                status = "provisional_conditioned_resample"
+            elif issues:
                 status = "provisional_event_ocr"
             elif not snapshot.completeness_confirmed:
                 status = "provisional_map_review"
@@ -339,9 +625,14 @@ class EmpiricalWorldPredictor:
             maximum=values[4],
             actionable=False,
             issues=tuple(dict.fromkeys(issues)),
+            diagnostics=tuple(dict.fromkeys(diagnostics)),
             contract=(
-                "public_empirical_plus_world_model_prior_uncalibrated"
-                if self.prior_world_count
-                else "empirical_compatible_worlds_uncalibrated"
+                "world_model_v2_conditioned_rejection_resample_uncalibrated"
+                if resampled
+                else (
+                    f"public_empirical_plus_world_model_prior_{self.world_model_version}_uncalibrated"
+                    if self.prior_world_count
+                    else "empirical_compatible_worlds_uncalibrated"
+                )
             ),
         )

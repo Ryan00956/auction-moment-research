@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auction-moment-assistant"
-version = "0.1.0b1"
+version = "0.2.0b6"
 description = "An ephemeral OCR and vision assistant for five-round auction research."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,8 @@ authors = [{ name = "Helenanana" }]
 dependencies = [
   "auction-moment-research>=0.1.0",
   "numpy>=2.5,<3",
+  "joblib>=1.5,<2",
+  "scikit-learn>=1.9,<2",
   "opencv-python>=5.0,<6",
   "Pillow>=12,<13",
   "rapidocr-onnxruntime==1.4.4",
@@ -25,5 +27,23 @@ auction-vision-assistant = "auction_moment_assistant.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+py-modules = [
+  "generative_world_model_v2",
+  "protocol_additive_value_model",
+  "protocol_analog_value_model",
+  "protocol_packet_residual_features",
+  "protocol_position_quality_augment_model",
+  "protocol_purple_area_augment_model",
+  "protocol_repeated_quality_sampling",
+  "protocol_round_residual_model",
+  "structural_value_features",
+  "train_supervised_value_model",
+]
+
 [tool.setuptools.package-data]
-auction_moment_assistant = ["model-release.json"]
+auction_moment_assistant = [
+  "model-release.json",
+  "catalog-metadata.json",
+  "catalog_previews/*.png",
+]

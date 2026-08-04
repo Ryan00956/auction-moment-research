@@ -28,6 +28,11 @@ data/private/
 *.docx
 node_modules/
 
+# Deliberately published 80x80 treasure-catalog thumbnails used by the
+# manual OCR correction UI. Full screenshots and other image evidence remain ignored.
+!apps/ephemeral-assistant/src/auction_moment_assistant/catalog_previews/
+!apps/ephemeral-assistant/src/auction_moment_assistant/catalog_previews/*.png
+
 # Local logs and editor state.
 *.log
 *.stdout

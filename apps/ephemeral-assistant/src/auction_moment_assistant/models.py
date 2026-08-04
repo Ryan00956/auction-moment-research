@@ -13,6 +13,7 @@ from typing import Mapping
 
 
 MODEL_RELEASE_SCHEMA = "auction-vision-model-release-v1"
+CATALOG_DISPLAY_SCHEMA = "auction-treasure-catalog-display-v1"
 
 
 class ModelError(RuntimeError):
@@ -27,10 +28,30 @@ class CatalogItem:
     width: int
     height: int
     value: int
+    display_name: str | None = None
 
     @property
     def size(self) -> str:
         return f"{self.width}x{self.height}"
+
+    @property
+    def label(self) -> str:
+        return str(self.display_name or self.name)
+
+
+def load_catalog_display_names() -> dict[str, str]:
+    resource = resources.files(__package__).joinpath("catalog-metadata.json")
+    payload = json.loads(resource.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != CATALOG_DISPLAY_SCHEMA:
+        raise ModelError("宝藏图鉴显示信息版本不兼容")
+    names = {
+        str(catalog_id): str(name).strip()
+        for catalog_id, name in (payload.get("names") or {}).items()
+        if str(catalog_id) and str(name).strip()
+    }
+    if not names:
+        raise ModelError("宝藏图鉴名称为空")
+    return names
 
 
 def sha256_file(path: Path) -> str:
@@ -128,6 +149,7 @@ def download_models(
 
 def load_catalog(treasures_csv: Path) -> tuple[CatalogItem, ...]:
     catalog: dict[str, CatalogItem] = {}
+    display_names = load_catalog_display_names()
     with Path(treasures_csv).open("r", encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
             catalog_id = str(row.get("catalog_id") or "")
@@ -140,6 +162,7 @@ def load_catalog(treasures_csv: Path) -> tuple[CatalogItem, ...]:
                 width=int(float(row["width"])),
                 height=int(float(row["height"])),
                 value=int(float(row["value"])),
+                display_name=display_names.get(catalog_id),
             )
             previous = catalog.get(catalog_id)
             if previous is not None and previous != item:

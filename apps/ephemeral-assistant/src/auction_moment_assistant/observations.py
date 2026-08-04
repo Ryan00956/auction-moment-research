@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Iterable
 
 import numpy as np
@@ -26,6 +26,10 @@ class MapObservation:
     column: int
     width: int | None = None
     height: int | None = None
+    # Detector/manual-review box geometry for anchor-only clues. These fields
+    # are presentation metadata and must never be translated into known size.
+    marker_width: int | None = None
+    marker_height: int | None = None
     quality: str | None = None
     catalog_id: str | None = None
     confidence: float = 0.0
@@ -33,6 +37,7 @@ class MapObservation:
     source: str = "vision"
     human_locked: bool = False
     identity_candidates: tuple[tuple[str, float], ...] = ()
+    first_seen_round: int | None = None
 
     @property
     def key(self) -> tuple[int, int]:
@@ -47,6 +52,12 @@ class ObservationSnapshot:
     events: tuple[dict, ...]
     map_items: tuple[dict, ...]
     completeness_confirmed: bool
+    completeness_source: str
+    map_rows: int | None
+    map_height_exact: bool
+    map_rows_source: str
+    pre_bid_confirmed: bool
+    pre_bid_source: str
 
 
 class ObservationStore:
@@ -65,7 +76,11 @@ class ObservationStore:
         self._events: dict[tuple[int, str], EventObservation] = {}
         self._map_items: dict[tuple[int, int], MapObservation] = {}
         self._suppressed_map_keys: set[tuple[int, int]] = set()
-        self._complete_rounds: set[int] = set()
+        self._complete_rounds: dict[int, str] = {}
+        self._map_extent_by_round: dict[
+            int, tuple[int | None, bool, str]
+        ] = {}
+        self._pre_bid_rounds: dict[int, str] = {}
         self._frame: np.ndarray | None = None
 
     @property
@@ -121,14 +136,24 @@ class ObservationStore:
             if bankroll is not None and not self._bankroll_human_locked:
                 self._bankroll = int(bankroll)
             for item in map_items:
-                key = item.key
+                observed = copy.deepcopy(item)
+                if observed.first_seen_round is None:
+                    observed.first_seen_round = self._round_number
+                key = observed.key
                 if key in self._suppressed_map_keys:
                     continue
                 previous = self._map_items.get(key)
                 if previous is not None and previous.human_locked:
                     continue
-                if previous is None or float(item.confidence) >= float(previous.confidence):
-                    self._map_items[key] = copy.deepcopy(item)
+                if previous is not None and previous.first_seen_round is not None:
+                    observed.first_seen_round = min(
+                        int(previous.first_seen_round),
+                        int(observed.first_seen_round),
+                    )
+                if previous is None or float(observed.confidence) >= float(
+                    previous.confidence
+                ):
+                    self._map_items[key] = observed
             return self._changed()
 
     def correct_event(
@@ -164,6 +189,14 @@ class ObservationStore:
         corrected.human_locked = True
         corrected.confidence = 1.0
         with self._lock:
+            previous = self._map_items.get(corrected.key)
+            if corrected.first_seen_round is None:
+                corrected.first_seen_round = (
+                    int(previous.first_seen_round)
+                    if previous is not None
+                    and previous.first_seen_round is not None
+                    else self._round_number
+                )
             self._suppressed_map_keys.discard(corrected.key)
             self._map_items[corrected.key] = corrected
             return self._changed()
@@ -178,13 +211,69 @@ class ObservationStore:
     def confirm_complete(self, confirmed: bool) -> int:
         with self._lock:
             if confirmed:
-                self._complete_rounds.add(self._round_number)
+                self._complete_rounds[self._round_number] = "human_confirmed"
             else:
-                self._complete_rounds.discard(self._round_number)
+                self._complete_rounds.pop(self._round_number, None)
+            return self._changed()
+
+    def correct_map_extent(self, rows: int | None, exact: bool) -> int:
+        parsed_rows = int(rows) if rows is not None else None
+        if parsed_rows is not None and parsed_rows <= 0:
+            raise ValueError("地图总行数必须大于 0")
+        with self._lock:
+            self._map_extent_by_round[self._round_number] = (
+                parsed_rows,
+                bool(exact and parsed_rows is not None),
+                "human_confirmed",
+            )
+            return self._changed()
+
+    def confirm_pre_bid(self, confirmed: bool) -> int:
+        with self._lock:
+            if confirmed:
+                self._pre_bid_rounds[self._round_number] = "human_confirmed"
+            else:
+                self._pre_bid_rounds.pop(self._round_number, None)
+            return self._changed()
+
+    def apply_automatic_scan_proof(
+        self,
+        *,
+        round_number: int,
+        map_rows: int | None,
+        complete: bool,
+        pre_bid: bool,
+    ) -> int:
+        """Attach explicit, provisional proof from the visual watch loop."""
+
+        round_number = max(1, min(5, int(round_number)))
+        parsed_rows = int(map_rows) if map_rows is not None else None
+        if parsed_rows is not None and parsed_rows <= 0:
+            raise ValueError("地图总行数必须大于 0")
+        with self._lock:
+            self._round_number = round_number
+            if complete and self._complete_rounds.get(round_number) != "human_confirmed":
+                self._complete_rounds[round_number] = "automatic_scroll_scan"
+            if pre_bid and self._pre_bid_rounds.get(round_number) != "human_confirmed":
+                self._pre_bid_rounds[round_number] = "visual_state_machine"
+            previous_extent = self._map_extent_by_round.get(round_number)
+            if parsed_rows is not None and (
+                previous_extent is None or previous_extent[2] != "human_confirmed"
+            ):
+                self._map_extent_by_round[round_number] = (
+                    parsed_rows,
+                    False,
+                    "automatic_scroll_estimate",
+                )
             return self._changed()
 
     def snapshot(self) -> ObservationSnapshot:
         with self._lock:
+            map_rows, map_height_exact, map_rows_source = (
+                self._map_extent_by_round.get(
+                    self._round_number, (None, False, "missing")
+                )
+            )
             return ObservationSnapshot(
                 revision=self._revision,
                 round_number=self._round_number,
@@ -200,6 +289,18 @@ class ObservationStore:
                 ),
                 completeness_confirmed=(
                     self._round_number in self._complete_rounds
+                ),
+                completeness_source=self._complete_rounds.get(
+                    self._round_number, "missing"
+                ),
+                map_rows=map_rows,
+                map_height_exact=map_height_exact,
+                map_rows_source=map_rows_source,
+                pre_bid_confirmed=(
+                    self._round_number in self._pre_bid_rounds
+                ),
+                pre_bid_source=self._pre_bid_rounds.get(
+                    self._round_number, "missing"
                 ),
             )
 
@@ -218,4 +319,6 @@ class ObservationStore:
             self._map_items.clear()
             self._suppressed_map_keys.clear()
             self._complete_rounds.clear()
+            self._map_extent_by_round.clear()
+            self._pre_bid_rounds.clear()
             return self._changed()
