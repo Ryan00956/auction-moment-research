@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+from .capture import AdbFrameSource
+from .models import (
+    ModelError,
+    download_models,
+    load_catalog,
+    load_release_manifest,
+    verify_model_directory,
+)
+from .observations import ObservationStore
+from .ocr import FixedLayoutOCR
+from .predictor import EmpiricalWorldPredictor
+from .runtime import CapturePipeline, InferenceCoordinator
+from .ui import AssistantWindow
+from .vision import UltralyticsVisionBackend, VisionRecognizer
+
+
+def default_treasures_path() -> Path:
+    candidate = Path.cwd() / "data" / "v1" / "core" / "treasures.csv"
+    return candidate
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="无抓包、无会话持久化的 OCR/YOLO 实时研究助手"
+    )
+    parser.add_argument(
+        "--models",
+        type=Path,
+        default=Path(
+            os.environ.get("AUCTION_ASSISTANT_MODELS", "models/vision-models-v1.0.0")
+        ),
+    )
+    parser.add_argument("--model-manifest", type=Path)
+    parser.add_argument("--model-base-url")
+    parser.add_argument("--download-models", action="store_true")
+    parser.add_argument("--verify-models", action="store_true")
+    parser.add_argument(
+        "--treasures", type=Path, default=default_treasures_path()
+    )
+    parser.add_argument("--adb", default="adb")
+    parser.add_argument("--serial", default="")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--minimum-ocr-confidence", type=float, default=0.85)
+    parser.add_argument("--no-ocr", action="store_true")
+    parser.add_argument("--no-vision", action="store_true")
+    return parser
+
+
+def run(args: argparse.Namespace) -> int:
+    manifest = load_release_manifest(args.model_manifest)
+    if args.download_models:
+        model_paths = download_models(
+            args.models,
+            base_url=args.model_base_url,
+            manifest=manifest,
+        )
+    else:
+        model_paths = verify_model_directory(args.models, manifest)
+    if args.verify_models:
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "release": manifest["release"],
+                    "models": {
+                        role: path.name for role, path in sorted(model_paths.items())
+                    },
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    catalog = load_catalog(args.treasures)
+    predictor = EmpiricalWorldPredictor(
+        args.treasures,
+        catalog,
+        world_model_path=model_paths["probabilistic_world_model"],
+    )
+    source = AdbFrameSource(adb=args.adb, serial=args.serial)
+    ocr = (
+        None
+        if args.no_ocr
+        else FixedLayoutOCR(minimum_confidence=args.minimum_ocr_confidence)
+    )
+    vision = None
+    if not args.no_vision:
+        backend = UltralyticsVisionBackend(model_paths, device=args.device)
+        vision = VisionRecognizer(backend, catalog)
+    store = ObservationStore()
+    pipeline = CapturePipeline(
+        source=source, store=store, ocr=ocr, vision=vision
+    )
+    window = AssistantWindow(
+        store=store,
+        pipeline=pipeline,
+        inference=InferenceCoordinator(predictor),
+        catalog=catalog,
+    )
+    window.run()
+    return 0
+
+
+def main() -> int:
+    try:
+        return run(build_parser().parse_args())
+    except (ModelError, OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

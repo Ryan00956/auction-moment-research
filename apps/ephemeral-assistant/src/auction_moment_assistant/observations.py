@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import copy
+import threading
+from dataclasses import asdict, dataclass, field
+from typing import Iterable
+
+import numpy as np
+
+
+@dataclass
+class EventObservation:
+    round_number: int
+    kind: str
+    text: str
+    confidence: float
+    semantics: dict
+    source: str = "ocr"
+    human_locked: bool = False
+    suggested_text: str | None = None
+
+
+@dataclass
+class MapObservation:
+    row: int
+    column: int
+    width: int | None = None
+    height: int | None = None
+    quality: str | None = None
+    catalog_id: str | None = None
+    confidence: float = 0.0
+    spatial: str = "top_left"
+    source: str = "vision"
+    human_locked: bool = False
+    identity_candidates: tuple[tuple[str, float], ...] = ()
+
+    @property
+    def key(self) -> tuple[int, int]:
+        return int(self.row), int(self.column)
+
+
+@dataclass(frozen=True)
+class ObservationSnapshot:
+    revision: int
+    round_number: int
+    bankroll: int | None
+    events: tuple[dict, ...]
+    map_items: tuple[dict, ...]
+    completeness_confirmed: bool
+
+
+class ObservationStore:
+    """Revisioned, memory-only evidence store.
+
+    Human corrections win over later OCR/vision observations. The store has no
+    serialization or path API by design.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._revision = 0
+        self._round_number = 1
+        self._bankroll: int | None = None
+        self._bankroll_human_locked = False
+        self._events: dict[tuple[int, str], EventObservation] = {}
+        self._map_items: dict[tuple[int, int], MapObservation] = {}
+        self._suppressed_map_keys: set[tuple[int, int]] = set()
+        self._complete_rounds: set[int] = set()
+        self._frame: np.ndarray | None = None
+
+    @property
+    def revision(self) -> int:
+        with self._lock:
+            return self._revision
+
+    @property
+    def round_number(self) -> int:
+        with self._lock:
+            return self._round_number
+
+    def _changed(self) -> int:
+        self._revision += 1
+        return self._revision
+
+    def set_round(self, round_number: int) -> int:
+        value = max(1, min(5, int(round_number)))
+        with self._lock:
+            if value == self._round_number:
+                return self._revision
+            self._round_number = value
+            return self._changed()
+
+    def set_frame(self, frame: np.ndarray) -> int:
+        owned = np.asarray(frame, dtype=np.uint8).copy()
+        with self._lock:
+            self._zero_frame()
+            self._frame = owned
+            return self._changed()
+
+    def frame_copy(self) -> np.ndarray | None:
+        with self._lock:
+            return self._frame.copy() if self._frame is not None else None
+
+    def apply_capture(
+        self,
+        *,
+        round_number: int,
+        events: Iterable[EventObservation],
+        bankroll: int | None,
+        map_items: Iterable[MapObservation],
+    ) -> int:
+        with self._lock:
+            self._round_number = max(1, min(5, int(round_number)))
+            for event in events:
+                key = (int(event.round_number), str(event.kind))
+                previous = self._events.get(key)
+                if previous is not None and previous.human_locked:
+                    previous.suggested_text = str(event.text)
+                    continue
+                self._events[key] = copy.deepcopy(event)
+            if bankroll is not None and not self._bankroll_human_locked:
+                self._bankroll = int(bankroll)
+            for item in map_items:
+                key = item.key
+                if key in self._suppressed_map_keys:
+                    continue
+                previous = self._map_items.get(key)
+                if previous is not None and previous.human_locked:
+                    continue
+                if previous is None or float(item.confidence) >= float(previous.confidence):
+                    self._map_items[key] = copy.deepcopy(item)
+            return self._changed()
+
+    def correct_event(
+        self,
+        round_number: int,
+        kind: str,
+        text: str,
+        semantics: dict,
+    ) -> int:
+        if kind not in {"public", "personal"}:
+            raise ValueError("kind 必须是 public 或 personal")
+        with self._lock:
+            self._events[(int(round_number), kind)] = EventObservation(
+                round_number=int(round_number),
+                kind=kind,
+                text=str(text).strip(),
+                confidence=1.0,
+                semantics=copy.deepcopy(semantics),
+                source="human",
+                human_locked=True,
+            )
+            return self._changed()
+
+    def correct_bankroll(self, value: int | None) -> int:
+        with self._lock:
+            self._bankroll = int(value) if value is not None else None
+            self._bankroll_human_locked = True
+            return self._changed()
+
+    def upsert_map_item(self, item: MapObservation) -> int:
+        corrected = copy.deepcopy(item)
+        corrected.source = "human"
+        corrected.human_locked = True
+        corrected.confidence = 1.0
+        with self._lock:
+            self._suppressed_map_keys.discard(corrected.key)
+            self._map_items[corrected.key] = corrected
+            return self._changed()
+
+    def remove_map_item(self, row: int, column: int) -> int:
+        key = (int(row), int(column))
+        with self._lock:
+            self._map_items.pop(key, None)
+            self._suppressed_map_keys.add(key)
+            return self._changed()
+
+    def confirm_complete(self, confirmed: bool) -> int:
+        with self._lock:
+            if confirmed:
+                self._complete_rounds.add(self._round_number)
+            else:
+                self._complete_rounds.discard(self._round_number)
+            return self._changed()
+
+    def snapshot(self) -> ObservationSnapshot:
+        with self._lock:
+            return ObservationSnapshot(
+                revision=self._revision,
+                round_number=self._round_number,
+                bankroll=self._bankroll,
+                events=tuple(
+                    asdict(value)
+                    for key, value in sorted(self._events.items())
+                    if key[0] <= self._round_number
+                ),
+                map_items=tuple(
+                    asdict(value)
+                    for _, value in sorted(self._map_items.items())
+                ),
+                completeness_confirmed=(
+                    self._round_number in self._complete_rounds
+                ),
+            )
+
+    def _zero_frame(self) -> None:
+        if self._frame is not None:
+            self._frame.fill(0)
+            self._frame = None
+
+    def reset(self) -> int:
+        with self._lock:
+            self._zero_frame()
+            self._round_number = 1
+            self._bankroll = None
+            self._bankroll_human_locked = False
+            self._events.clear()
+            self._map_items.clear()
+            self._suppressed_map_keys.clear()
+            self._complete_rounds.clear()
+            return self._changed()

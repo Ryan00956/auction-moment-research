@@ -1,0 +1,31 @@
+{
+  "schema_version": "auction-vision-model-release-v1",
+  "release": "vision-models-v1.0.0",
+  "download_base_url": "https://github.com/Ryan00956/auction-moment-research/releases/download/vision-models-v1.0.0",
+  "models": [
+    {
+      "filename": "clue-spatial-yolo26n-v1.pt",
+      "role": "spatial_detector",
+      "bytes": 5431567,
+      "sha256": "be8f9762ead9faa7da80f4f6a2a6c000feb7de1ec4204fd93bca42ff29318209"
+    },
+    {
+      "filename": "clue-detector-yolo26n-v1.pt",
+      "role": "attribute_detector",
+      "bytes": 5442077,
+      "sha256": "db30e5c18c69d8292f6036ce05476ef219ababdcd7c7d9fab401c7a2758e0e19"
+    },
+    {
+      "filename": "treasure-classifier-yolo26n-v1.pt",
+      "role": "identity_classifier",
+      "bytes": 3507620,
+      "sha256": "e0697de5faffe769f80cebc32948b5f2ed0c34fe611639ca8da733dc24dc54c4"
+    },
+    {
+      "filename": "world-model-v1-S.json",
+      "role": "probabilistic_world_model",
+      "bytes": 30878,
+      "sha256": "d7ca7caaca5684264dc021da5a255bb8bfab2a2945c0d8f390d57a8958e8b428"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auction-moment-assistant"
+version = "0.1.0b1"
+description = "An ephemeral OCR and vision assistant for five-round auction research."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+authors = [{ name = "Helenanana" }]
+dependencies = [
+  "auction-moment-research>=0.1.0",
+  "numpy>=2.5,<3",
+  "opencv-python>=5.0,<6",
+  "Pillow>=12,<13",
+  "rapidocr-onnxruntime==1.4.4",
+  "ultralytics==8.4.104",
+]
+
+[project.scripts]
+auction-vision-assistant = "auction_moment_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+auction_moment_assistant = ["model-release.json"]

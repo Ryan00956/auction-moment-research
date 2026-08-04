@@ -27,6 +27,13 @@ RAW_SESSION_ID = re.compile(r"\b\d{8}T\d{6}\b")
 ABSOLUTE_WINDOWS_PATH = re.compile(r"(?:[A-Za-z]:\\|\\\\\?\\)")
 EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PUBLIC_ARTIFACT_ROOTS = ("data", "reports", "results")
+IGNORED_SCAN_DIRECTORIES = {
+    ".git",
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -74,12 +81,42 @@ def verify_result_manifests(errors: list[str]) -> None:
 
 def verify_repository_files(errors: list[str]) -> None:
     for path in REPOSITORY_ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
+        if not path.is_file() or any(
+            part in IGNORED_SCAN_DIRECTORIES for part in path.parts
+        ):
             continue
         if path.suffix.lower() in FORBIDDEN_EXTENSIONS:
             errors.append(f"forbidden extension: {path.relative_to(REPOSITORY_ROOT)}")
         if path.stat().st_size > 50 * 1024 * 1024:
             errors.append(f"file exceeds 50 MiB: {path.relative_to(REPOSITORY_ROOT)}")
+
+
+def verify_assistant_privacy_boundary(errors: list[str]) -> None:
+    source_root = (
+        REPOSITORY_ROOT
+        / "apps"
+        / "ephemeral-assistant"
+        / "src"
+        / "auction_moment_assistant"
+    )
+    forbidden_tokens = {
+        "auction_protocol": "protocol implementation",
+        "packet_realtime_bidder": "packet bidder",
+        "tcpdump": "packet capture",
+        "write_text(": "runtime text persistence",
+        "write_bytes(": "runtime binary persistence",
+        "cv2.imwrite(": "runtime image persistence",
+        "image.save(": "runtime image persistence",
+        "filehandler(": "file logging",
+    }
+    for path in source_root.glob("*.py"):
+        lowered = path.read_text(encoding="utf-8").lower()
+        for token, label in forbidden_tokens.items():
+            if token in lowered:
+                errors.append(
+                    f"assistant privacy boundary contains {label}: "
+                    f"{path.relative_to(REPOSITORY_ROOT)}"
+                )
 
 
 def verify_public_artifacts(errors: list[str]) -> None:
@@ -115,6 +152,7 @@ def main() -> int:
     verify_data_manifest(errors)
     verify_result_manifests(errors)
     verify_public_artifacts(errors)
+    verify_assistant_privacy_boundary(errors)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

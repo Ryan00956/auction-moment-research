@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import unittest
+import tempfile
+from pathlib import Path
+
+from auction_moment_assistant.models import load_catalog
+from auction_moment_assistant.observations import (
+    EventObservation,
+    ObservationStore,
+)
+from auction_moment_assistant.predictor import EmpiricalWorldPredictor
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+TREASURES = REPOSITORY_ROOT / "data" / "v1" / "core" / "treasures.csv"
+
+
+class PredictorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.catalog = load_catalog(TREASURES)
+        cls.predictor = EmpiricalWorldPredictor(TREASURES, cls.catalog)
+
+    def test_missing_events_is_provisional_and_never_actionable(self) -> None:
+        store = ObservationStore()
+        result = self.predictor.predict(store.snapshot())
+        self.assertEqual(result.status, "provisional_event_ocr")
+        self.assertFalse(result.actionable)
+        self.assertGreater(result.compatible_worlds, 1000)
+
+    def test_exact_total_count_filters_public_worlds(self) -> None:
+        store = ObservationStore()
+        store.apply_capture(
+            round_number=1,
+            events=[
+                EventObservation(
+                    1,
+                    "public",
+                    "显示本局藏品总数量20",
+                    1.0,
+                    {
+                        "parsed": True,
+                        "effect": "total_item_count",
+                        "observed_count": 20,
+                    },
+                    source="human",
+                    human_locked=True,
+                ),
+                EventObservation(
+                    1,
+                    "personal",
+                    "随机显示4件藏品的位置",
+                    1.0,
+                    {
+                        "parsed": True,
+                        "effect": "reveal_position_random",
+                        "count": 4,
+                    },
+                    source="human",
+                    human_locked=True,
+                ),
+            ],
+            bankroll=None,
+            map_items=[],
+        )
+        result = self.predictor.predict(store.snapshot())
+        self.assertGreater(result.compatible_worlds, 0)
+        self.assertLess(result.compatible_worlds, 1794)
+        self.assertIsNotNone(result.p50)
+
+    def test_release_world_model_is_consumed_when_configured(self) -> None:
+        from auction_moment_research.train_world_model import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            model_path = Path(directory) / "world-model.json"
+            train(TREASURES, model_path)
+            predictor = EmpiricalWorldPredictor(
+                TREASURES,
+                self.catalog,
+                world_model_path=model_path,
+                prior_samples=16,
+            )
+        result = predictor.predict(ObservationStore().snapshot())
+        self.assertEqual(predictor.prior_world_count, 16)
+        self.assertIn("world_model_prior", result.contract)
+
+
+if __name__ == "__main__":
+    unittest.main()

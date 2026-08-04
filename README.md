@@ -5,10 +5,62 @@
 - 匿名化、纯文本、带哈希清单的数据集；
 - 可从公开数据重新生成的概率世界模型和对手行为聚类代码；
 - 冻结样本上的分析结论、评估指标和不确定性边界；
-- 数据匿名化、模型训练和公开发布检查工具。
+- 数据匿名化、模型训练和公开发布检查工具；
+- 不抓包、不保存会话的 OCR/YOLO 实时研究助手。
 
-本仓库是**离线研究项目**。它不包含图片、视频、抓包、解密脚本、游戏二进制、
-模型权重、自动点击或自动出价执行层，也不授权将研究结果直接用于实时建议。
+仓库不包含图片、视频、抓包、协议解析、解密脚本、游戏二进制、玩家身份、
+自动点击或自动出价执行层。Git 历史保持文本-only；经过路径净化和参数等价验证的
+中间态视觉权重通过 GitHub Release 单独发布。助手只显示未校准研究估计，不会
+替用户提交报价。
+
+## 无持久化视觉助手（beta）
+
+[`apps/ephemeral-assistant`](apps/ephemeral-assistant) 是一个独立 AGPL-3.0
+子项目：
+
+- ADB 只执行 `exec-out screencap -p` 读取当前 `1280×720` 画面，不发送点击、
+  滑动、按键或抓包命令；
+- RapidOCR 识别轮次、公共/个人事件和持有金额；
+- 三份 YOLO 权重识别位置、品质、规格和完整揭示身份 Top-k；
+- 用户可以实时补充漏检、删除误检、修改事件/金额/位置/品质/规格/身份；
+- 人工修正按 revision 锁定，后续 OCR 不会静默覆盖，过期推理结果不会显示；
+- 截图、OCR、修正、预测和终局均不写入文件；终局或退出立即清空本局内存；
+- 静态模型文件是唯一允许持久化的助手资产。
+
+安装仓库和助手：
+
+```powershell
+python -m pip install -e .
+python -m pip install -e .\apps\ephemeral-assistant
+```
+
+从 `vision-models-v1.0.0` Release 解压模型后运行：
+
+```powershell
+auction-vision-assistant `
+  --models C:\path\to\vision-models-v1.0.0 `
+  --treasures .\data\v1\core\treasures.csv
+```
+
+或者让程序按固定版本和 SHA-256 下载静态模型：
+
+```powershell
+auction-vision-assistant `
+  --download-models `
+  --models .\models\vision-models-v1.0.0 `
+  --treasures .\data\v1\core\treasures.csv
+```
+
+程序启动前会严格校验四个模型文件的大小和 SHA-256。也可以先独立验证：
+
+```powershell
+python scripts\verify_vision_release.py `
+  --release C:\path\to\auction-assistant-vision-models-v1.0.0.zip
+```
+
+地图滚动由用户在游戏窗口中手动完成；每次读取前在助手中填写当前视口的起始
+网格行。助手本身不控制游戏。详细隐私契约见
+[`apps/ephemeral-assistant/PRIVACY.md`](apps/ephemeral-assistant/PRIVACY.md)。
 
 ## 数据概况
 
@@ -40,9 +92,10 @@
 总件数 → 彩色件数 → 非彩品质数量 → 品质内规格 → 具体身份
 ```
 
-模型 JSON 不提交到 Git；生成代码、输入哈希和一次验证输出哈希保存在
+世界模型 JSON 不提交到 Git；生成代码、输入哈希和一次验证输出哈希保存在
 [`models/MODEL_CARD.md`](models/MODEL_CARD.md) 与
 [`results/world-model-training-manifest.json`](results/world-model-training-manifest.json)。
+可直接加载的同一再生输出随视觉 Release 发布。
 
 ### 对手行为聚类
 
@@ -104,7 +157,9 @@ python -m auction_moment_research.opponent_clustering \
 - 玩家昵称、自身账号、原始玩家 ID、精确时间、本机路径和源文件路径均已移除；
 - 对手研究只保留日期，足以复现按时间切分；
 - 结算、最终数量和身份属于赛后标签，不能伪装成决策时信息；
-- 原始图片、视频和协议证据仍只保存在私有采集工程中。
+- 原始图片、视频和协议证据仍只保存在私有采集工程中；
+- Release 权重不包含训练图片，但仍会经过检查点元数据净化，防止训练路径和
+  原始会话标识被二进制文件间接带出。
 
 详见 [`data/v1/DATA_CARD.md`](data/v1/DATA_CARD.md)。
 
@@ -121,6 +176,11 @@ python -m auction_moment_research.opponent_clustering \
 ## 许可证
 
 - 代码：Apache License 2.0，见 [`LICENSE`](LICENSE)。
+- `apps/ephemeral-assistant/`：AGPL-3.0-only，见
+  [`apps/ephemeral-assistant/LICENSE`](apps/ephemeral-assistant/LICENSE)。
+- Ultralytics `.pt` 模型资产：AGPL-3.0；具体边界见
+  [`models/VISION_MODEL_CARD.md`](models/VISION_MODEL_CARD.md) 和
+  [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - `data/v1/`、`reports/` 和 `results/`：CC BY 4.0，见
   [`DATA_LICENSE.md`](DATA_LICENSE.md)。
 - 第三方游戏名称、商标和未包含的原始资产不因本仓库获得任何授权。
