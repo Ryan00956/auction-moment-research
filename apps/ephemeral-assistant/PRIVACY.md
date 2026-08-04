@@ -25,6 +25,11 @@ normal static inputs and may be stored locally. The optional downloader writes
 only files declared in `model-release.json`, verifies their byte counts and
 SHA-256 values, and never uploads data.
 
+The latest v6 joblib and world-model-v2 are static assets. The release builder
+replaces raw session identifiers and private paths and verifies numeric
+equivalence before publication. Packet parsers, protocol codebooks, automatic
+bidding logic, screenshots, and settlement records are not included.
+
 ## Device access
 
 The ADB frame source invokes only `adb [-s SERIAL] exec-out screencap -p` after
@@ -33,7 +38,8 @@ port forwarding, process injection, protocol decoding, or settlement export.
 
 ## Fail-closed behavior
 
-Missing/unparsed events, unconfirmed map completeness, low public-world support,
+Missing/unparsed events, an unconfirmed pre-bid moment or map height,
+unconfirmed map completeness, low public-world support,
 or contradictory constraints remain provisional or blocked. Human edits can
 repair observations but cannot toggle an estimate into an automatic action;
 all published assistant results have `actionable=false`.

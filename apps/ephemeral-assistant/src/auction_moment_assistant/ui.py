@@ -47,6 +47,9 @@ class AssistantWindow:
         self.round_var = tk.IntVar(value=1)
         self.offset_var = tk.IntVar(value=0)
         self.complete_var = tk.BooleanVar(value=False)
+        self.pre_bid_var = tk.BooleanVar(value=False)
+        self.map_rows_var = tk.StringVar()
+        self.map_exact_var = tk.BooleanVar(value=False)
         ttk.Label(controls, text="轮次").pack(side=tk.LEFT)
         ttk.Spinbox(
             controls, from_=1, to=5, width=4, textvariable=self.round_var
@@ -68,6 +71,12 @@ class AssistantWindow:
             variable=self.complete_var,
             command=self.confirm_complete,
         ).pack(side=tk.LEFT, padx=12)
+        ttk.Checkbutton(
+            controls,
+            text="当前画面确认在本轮出价前",
+            variable=self.pre_bid_var,
+            command=self.confirm_pre_bid,
+        ).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Button(controls, text="清空本局内存", command=self.reset).pack(
             side=tk.RIGHT
         )
@@ -115,6 +124,26 @@ class AssistantWindow:
 
         map_box = ttk.LabelFrame(right, text="当前内存地图证据", padding=8)
         map_box.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        map_proof = ttk.Frame(map_box)
+        map_proof.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(map_proof, text="地图总行数").pack(side=tk.LEFT)
+        ttk.Spinbox(
+            map_proof,
+            from_=1,
+            to=50,
+            width=5,
+            textvariable=self.map_rows_var,
+        ).pack(side=tk.LEFT, padx=(4, 8))
+        ttk.Checkbutton(
+            map_proof,
+            text="底部可见，行数已人工确认",
+            variable=self.map_exact_var,
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            map_proof,
+            text="应用",
+            command=self.apply_map_extent,
+        ).pack(side=tk.RIGHT)
         columns = ("pos", "size", "quality", "identity", "confidence", "source")
         self.tree = ttk.Treeview(
             map_box, columns=columns, show="headings", height=12
@@ -313,7 +342,25 @@ class AssistantWindow:
         self.request_prediction()
 
     def confirm_complete(self) -> None:
+        self.store.set_round(self.round_var.get())
         self.store.confirm_complete(bool(self.complete_var.get()))
+        self.request_prediction()
+
+    def confirm_pre_bid(self) -> None:
+        self.store.set_round(self.round_var.get())
+        self.store.confirm_pre_bid(bool(self.pre_bid_var.get()))
+        self.request_prediction()
+
+    def apply_map_extent(self) -> None:
+        self.store.set_round(self.round_var.get())
+        raw = self.map_rows_var.get().strip()
+        try:
+            rows = int(raw) if raw else None
+            self.store.correct_map_extent(rows, bool(self.map_exact_var.get()))
+        except ValueError as exc:
+            messagebox.showerror("地图行数无效", str(exc))
+            return
+        self.refresh()
         self.request_prediction()
 
     def request_prediction(self) -> None:
@@ -338,9 +385,16 @@ class AssistantWindow:
                 f"状态：{result.status}\n兼容世界：0\n问题：{', '.join(result.issues)}"
             )
         else:
+            model_line = ""
+            if result.v6_prediction is not None and result.v2_prediction is not None:
+                model_line = (
+                    f"v6 / v2：{result.v6_prediction:,} / {result.v2_prediction:,}"
+                    f"（v2 权重 {result.generation_weight:.0%}）\n"
+                )
             self.prediction_var.set(
                 f"状态：{result.status}\n"
                 f"兼容世界：{result.compatible_worlds}\n"
+                f"{model_line}"
                 f"P10 / P50 / P90：{result.p10:,} / {result.p50:,} / {result.p90:,}\n"
                 f"范围：{result.minimum:,} - {result.maximum:,}\n"
                 "区间未校准，actionable=false"
@@ -350,6 +404,11 @@ class AssistantWindow:
         snapshot = self.store.snapshot()
         self.round_var.set(snapshot.round_number)
         self.complete_var.set(snapshot.completeness_confirmed)
+        self.pre_bid_var.set(snapshot.pre_bid_confirmed)
+        self.map_rows_var.set(
+            str(snapshot.map_rows) if snapshot.map_rows is not None else ""
+        )
+        self.map_exact_var.set(snapshot.map_height_exact)
         events = {
             (int(value["round_number"]), str(value["kind"])): value
             for value in snapshot.events

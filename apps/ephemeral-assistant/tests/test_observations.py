@@ -68,6 +68,9 @@ class ObservationStoreTests(unittest.TestCase):
         snapshot = store.snapshot()
         self.assertIsNone(snapshot.bankroll)
         self.assertEqual(snapshot.map_items, ())
+        self.assertIsNone(snapshot.map_rows)
+        self.assertFalse(snapshot.map_height_exact)
+        self.assertFalse(snapshot.pre_bid_confirmed)
         self.assertTrue(np.all(frame == 42), "store must own its frame copy")
 
 

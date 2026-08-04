@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 import random
 from collections import Counter, defaultdict
@@ -43,6 +44,10 @@ class PredictionResult:
     actionable: bool
     issues: tuple[str, ...]
     contract: str = "empirical_compatible_worlds_uncalibrated"
+    v6_prediction: int | None = None
+    v2_prediction: int | None = None
+    generation_weight: float | None = None
+    model_version: str | None = None
 
 
 class EmpiricalWorldPredictor:
@@ -85,19 +90,31 @@ class EmpiricalWorldPredictor:
         )
         self.empirical_world_count = len(empirical_counts)
         prior_counts = np.empty((0, len(self.catalog)), dtype=np.int16)
+        self.world_model_version = "none"
         if world_model_path is not None:
             try:
-                from auction_moment_research.world_model import (
-                    ProbabilisticWorldModel,
+                payload = json.loads(
+                    Path(world_model_path).read_text(encoding="utf-8")
                 )
-            except ImportError as exc:
-                raise PredictionError(
-                    "加载 Release 世界模型需要先安装仓库根目录研究包"
-                ) from exc
-            try:
-                model = ProbabilisticWorldModel.load(
-                    Path(world_model_path), self.catalog
-                )
+                schema = str(payload.get("schema_version") or "")
+                if schema == "world-model-v2":
+                    from generative_world_model_v2 import GenerativeWorldModelV2
+
+                    model = GenerativeWorldModelV2.load(
+                        Path(world_model_path), self.catalog
+                    )
+                    self.world_model_version = "world_model_v2"
+                else:
+                    from auction_moment_research.world_model import (
+                        ProbabilisticWorldModel,
+                    )
+
+                    model = ProbabilisticWorldModel.load(
+                        Path(world_model_path), self.catalog
+                    )
+                    self.world_model_version = (
+                        schema.replace("-", "_") if schema else "world_model_v1"
+                    )
             except Exception as exc:
                 raise PredictionError(f"世界模型加载失败：{exc}") from exc
             rng = random.Random(20260804)
@@ -251,7 +268,13 @@ class EmpiricalWorldPredictor:
         size_minimum: Counter[tuple[int, int]] = Counter()
         joint_minimum: Counter[tuple[str, int, int]] = Counter()
         for item in items:
-            catalog_id = str(item.get("catalog_id") or "")
+            human_locked = bool(item.get("human_locked"))
+            confidence = float(item.get("confidence") or 0.0)
+            if not human_locked and confidence < 0.85:
+                continue
+            catalog_id = (
+                str(item.get("catalog_id") or "") if human_locked else ""
+            )
             quality = str(item.get("quality") or "")
             width = int(item.get("width") or 0)
             height = int(item.get("height") or 0)
@@ -340,7 +363,7 @@ class EmpiricalWorldPredictor:
             actionable=False,
             issues=tuple(dict.fromkeys(issues)),
             contract=(
-                "public_empirical_plus_world_model_prior_uncalibrated"
+                f"public_empirical_plus_world_model_prior_{self.world_model_version}_uncalibrated"
                 if self.prior_world_count
                 else "empirical_compatible_worlds_uncalibrated"
             ),

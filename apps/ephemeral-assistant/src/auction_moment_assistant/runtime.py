@@ -10,7 +10,7 @@ import numpy as np
 from .capture import FrameSource
 from .observations import ObservationStore
 from .ocr import FixedLayoutOCR, OcrCapture
-from .predictor import EmpiricalWorldPredictor, PredictionResult
+from .predictor import PredictionResult
 from .vision import VisionRecognizer
 
 
@@ -134,7 +134,7 @@ class CapturePipeline:
 
 
 class InferenceCoordinator:
-    def __init__(self, predictor: EmpiricalWorldPredictor) -> None:
+    def __init__(self, predictor) -> None:
         self.predictor = predictor
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="auction-predictor"

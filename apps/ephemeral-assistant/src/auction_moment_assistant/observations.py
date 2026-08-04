@@ -33,6 +33,7 @@ class MapObservation:
     source: str = "vision"
     human_locked: bool = False
     identity_candidates: tuple[tuple[str, float], ...] = ()
+    first_seen_round: int | None = None
 
     @property
     def key(self) -> tuple[int, int]:
@@ -47,6 +48,9 @@ class ObservationSnapshot:
     events: tuple[dict, ...]
     map_items: tuple[dict, ...]
     completeness_confirmed: bool
+    map_rows: int | None
+    map_height_exact: bool
+    pre_bid_confirmed: bool
 
 
 class ObservationStore:
@@ -66,6 +70,8 @@ class ObservationStore:
         self._map_items: dict[tuple[int, int], MapObservation] = {}
         self._suppressed_map_keys: set[tuple[int, int]] = set()
         self._complete_rounds: set[int] = set()
+        self._map_extent_by_round: dict[int, tuple[int | None, bool]] = {}
+        self._pre_bid_rounds: set[int] = set()
         self._frame: np.ndarray | None = None
 
     @property
@@ -121,14 +127,24 @@ class ObservationStore:
             if bankroll is not None and not self._bankroll_human_locked:
                 self._bankroll = int(bankroll)
             for item in map_items:
-                key = item.key
+                observed = copy.deepcopy(item)
+                if observed.first_seen_round is None:
+                    observed.first_seen_round = self._round_number
+                key = observed.key
                 if key in self._suppressed_map_keys:
                     continue
                 previous = self._map_items.get(key)
                 if previous is not None and previous.human_locked:
                     continue
-                if previous is None or float(item.confidence) >= float(previous.confidence):
-                    self._map_items[key] = copy.deepcopy(item)
+                if previous is not None and previous.first_seen_round is not None:
+                    observed.first_seen_round = min(
+                        int(previous.first_seen_round),
+                        int(observed.first_seen_round),
+                    )
+                if previous is None or float(observed.confidence) >= float(
+                    previous.confidence
+                ):
+                    self._map_items[key] = observed
             return self._changed()
 
     def correct_event(
@@ -164,6 +180,14 @@ class ObservationStore:
         corrected.human_locked = True
         corrected.confidence = 1.0
         with self._lock:
+            previous = self._map_items.get(corrected.key)
+            if corrected.first_seen_round is None:
+                corrected.first_seen_round = (
+                    int(previous.first_seen_round)
+                    if previous is not None
+                    and previous.first_seen_round is not None
+                    else self._round_number
+                )
             self._suppressed_map_keys.discard(corrected.key)
             self._map_items[corrected.key] = corrected
             return self._changed()
@@ -183,8 +207,30 @@ class ObservationStore:
                 self._complete_rounds.discard(self._round_number)
             return self._changed()
 
+    def correct_map_extent(self, rows: int | None, exact: bool) -> int:
+        parsed_rows = int(rows) if rows is not None else None
+        if parsed_rows is not None and parsed_rows <= 0:
+            raise ValueError("地图总行数必须大于 0")
+        with self._lock:
+            self._map_extent_by_round[self._round_number] = (
+                parsed_rows,
+                bool(exact and parsed_rows is not None),
+            )
+            return self._changed()
+
+    def confirm_pre_bid(self, confirmed: bool) -> int:
+        with self._lock:
+            if confirmed:
+                self._pre_bid_rounds.add(self._round_number)
+            else:
+                self._pre_bid_rounds.discard(self._round_number)
+            return self._changed()
+
     def snapshot(self) -> ObservationSnapshot:
         with self._lock:
+            map_rows, map_height_exact = self._map_extent_by_round.get(
+                self._round_number, (None, False)
+            )
             return ObservationSnapshot(
                 revision=self._revision,
                 round_number=self._round_number,
@@ -200,6 +246,11 @@ class ObservationStore:
                 ),
                 completeness_confirmed=(
                     self._round_number in self._complete_rounds
+                ),
+                map_rows=map_rows,
+                map_height_exact=map_height_exact,
+                pre_bid_confirmed=(
+                    self._round_number in self._pre_bid_rounds
                 ),
             )
 
@@ -218,4 +269,6 @@ class ObservationStore:
             self._map_items.clear()
             self._suppressed_map_keys.clear()
             self._complete_rounds.clear()
+            self._map_extent_by_round.clear()
+            self._pre_bid_rounds.clear()
             return self._changed()
