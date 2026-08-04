@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 from .map_editor import MapEditor
 from .models import CatalogItem
 from .observations import ObservationStore
+from .presentation import format_prediction
 from .predictor import PredictionResult
 from .runtime import (
     CapturePipeline,
@@ -73,7 +74,7 @@ class AssistantWindow:
             self.root,
             text=(
                 "只读取画面；自动输入仅限左侧地图滚动。无抓包、无点击、无按键、"
-                "无出价、无截图/事件/预测/结算落盘。"
+                "无自动出价、无截图/事件/预测/结算落盘。"
             ),
             padding=(8, 0),
             foreground="#64748b",
@@ -158,7 +159,9 @@ class AssistantWindow:
         evidence_box.columnconfigure(1, weight=1)
 
         prediction_box = ttk.LabelFrame(
-            right, text="v6 + world-model-v2 预测（不自动出价）", padding=8
+            right,
+            text="v6 + world-model-v2 估值与建议出价（仅人工参考）",
+            padding=8,
         )
         prediction_box.pack(fill=tk.X, pady=(8, 0))
         self.prediction_var = tk.StringVar(value="等待每轮自动扫描")
@@ -268,26 +271,7 @@ class AssistantWindow:
         if not self.inference.current(self.store, result):
             self.request_prediction()
             return
-        if result.p50 is None:
-            self.prediction_var.set(
-                f"状态：{result.status}\n尚不能运行最新模型\n"
-                f"待补证据：{', '.join(result.issues) or '未知'}"
-            )
-            return
-        model_line = ""
-        if result.v6_prediction is not None and result.v2_prediction is not None:
-            model_line = (
-                f"v6 / v2：{result.v6_prediction:,} / {result.v2_prediction:,}"
-                f"（v2 权重 {result.generation_weight:.0%}）\n"
-            )
-        self.prediction_var.set(
-            f"状态：已完成本轮预测待机\n"
-            f"{model_line}"
-            f"P10 / P50 / P90：{result.p10:,} / {result.p50:,} / {result.p90:,}\n"
-            f"范围：{result.minimum:,} - {result.maximum:,}\n"
-            f"提示：{', '.join(result.issues)}\n"
-            "区间未校准，actionable=false"
-        )
+        self.prediction_var.set(format_prediction(result))
 
     def refresh(self) -> None:
         snapshot = self.store.snapshot()

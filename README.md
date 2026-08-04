@@ -28,6 +28,8 @@
   完整身份直接采用，仍可在画布上人工改错；
 - OCR 转义层把已解析事件和显式标注来源的地图/时点证据送入最新冻结
   `v6 + world-model-v2`；自动滚动行数始终标为估算而不是精确证明；
+- 每轮显示 P10/P50/P90，并以 `P10 × 0.90` 给出仅供人工参考的建议最高出价；
+  v2 条件冲突时保留 v6 保守回退并指出导致世界归零的事件或地图条件；
 - 左侧地图画布恢复原校对器的 13 类证据：左上角位置/完整形状分别组合
   无品质、白、蓝、紫、金、彩，再加完整身份；标注框几何与真实尺寸分离，
   人工完整身份必须从兼容图鉴列表明确选中；右侧事件可逐轮修正；
@@ -42,11 +44,11 @@ python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
 ```
 
-从 `latest-model-v6-v2.0.0-beta.3` 预发布解压五个模型文件后运行：
+从 `latest-model-v6-v2.0.0-beta.4` 预发布解压五个模型文件后运行：
 
 ```powershell
 auction-vision-assistant `
-  --models C:\path\to\latest-model-v6-v2.0.0-beta.3 `
+  --models C:\path\to\latest-model-v6-v2.0.0-beta.4 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -55,7 +57,7 @@ auction-vision-assistant `
 ```powershell
 auction-vision-assistant `
   --download-models `
-  --models .\models\latest-model-v6-v2.0.0-beta.3 `
+  --models .\models\latest-model-v6-v2.0.0-beta.4 `
   --treasures .\data\v1\core\treasures.csv
 ```
 

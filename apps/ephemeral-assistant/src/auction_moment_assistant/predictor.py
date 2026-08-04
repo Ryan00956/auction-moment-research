@@ -48,6 +48,13 @@ class PredictionResult:
     v2_prediction: int | None = None
     generation_weight: float | None = None
     model_version: str | None = None
+    estimate_source: str | None = None
+    recommended_bid: int | None = None
+    bid_safety_factor: float | None = None
+    required_winning_multiplier: float | None = None
+    maximum_opponent_bid: int | None = None
+    bid_basis: str | None = None
+    diagnostics: tuple[str, ...] = ()
 
 
 class EmpiricalWorldPredictor:
@@ -261,7 +268,10 @@ class EmpiricalWorldPredictor:
         return mask
 
     def _apply_visible_items(
-        self, mask: np.ndarray, items: Iterable[Mapping]
+        self,
+        mask: np.ndarray,
+        items: Iterable[Mapping],
+        diagnostics: list[str] | None = None,
     ) -> np.ndarray:
         identity_minimum: Counter[str] = Counter()
         quality_minimum: Counter[str] = Counter()
@@ -296,30 +306,68 @@ class EmpiricalWorldPredictor:
                 and height
             ):
                 joint_minimum[(quality, width, height)] += 1
-        mask &= self.total_counts >= minimum_visible_item_count
+        def constrain(condition: np.ndarray, label: str) -> None:
+            nonlocal mask
+            had_candidates = bool(np.any(mask))
+            mask = mask & condition
+            if diagnostics is not None and had_candidates and not np.any(mask):
+                diagnostics.append(label)
+
+        constrain(
+            self.total_counts >= minimum_visible_item_count,
+            f"map_conflict:visible_count:{minimum_visible_item_count}",
+        )
         for catalog_id, minimum in identity_minimum.items():
             index = self.index_by_id.get(catalog_id)
             if index is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, index] >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_identity:{catalog_id}",
+                )
+                continue
+            constrain(
+                self.world_counts[:, index] >= minimum,
+                f"map_conflict:identity:{catalog_id}:{minimum}",
+            )
         for quality, minimum in quality_minimum.items():
             group = self.quality_masks.get(quality)
             if group is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_quality:{quality}",
+                )
+                continue
+            constrain(
+                self.world_counts[:, group].sum(axis=1) >= minimum,
+                f"map_conflict:quality:{quality}:{minimum}",
+            )
         for size, minimum in size_minimum.items():
             group = self.size_masks.get(size)
             if group is None:
-                return np.zeros_like(mask)
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+                constrain(
+                    np.zeros_like(mask),
+                    f"map_conflict:unknown_size:{size[0]}x{size[1]}",
+                )
+                continue
+            constrain(
+                self.world_counts[:, group].sum(axis=1) >= minimum,
+                f"map_conflict:size:{size[0]}x{size[1]}:{minimum}",
+            )
         for (quality, width, height), minimum in joint_minimum.items():
             group = self.quality_masks[quality] & self.size_masks[(width, height)]
-            mask &= self.world_counts[:, group].sum(axis=1) >= minimum
+            constrain(
+                self.world_counts[:, group].sum(axis=1) >= minimum,
+                (
+                    f"map_conflict:quality_size:{quality}:"
+                    f"{width}x{height}:{minimum}"
+                ),
+            )
         return mask
 
     def predict(self, snapshot: ObservationSnapshot) -> PredictionResult:
         mask = np.ones(len(self.world_counts), dtype=bool)
         issues = []
+        diagnostics: list[str] = []
         current_events = [
             event
             for event in snapshot.events
@@ -334,8 +382,35 @@ class EmpiricalWorldPredictor:
                     f"unparsed_event:R{event['round_number']}:{event['kind']}"
                 )
                 continue
-            mask = self._apply_event(mask, semantics)
-        mask = self._apply_visible_items(mask, snapshot.map_items)
+            updated = self._apply_event(mask, semantics)
+            if np.any(mask) and not np.any(updated):
+                diagnostic = (
+                    "event_conflict:"
+                    f"R{event['round_number']}:"
+                    f"{event['kind']}:"
+                    f"{semantics.get('effect') or 'unparsed'}"
+                )
+                observed = next(
+                    (
+                        semantics.get(key)
+                        for key in (
+                            "observed_count",
+                            "observed_value",
+                            "observed_cells",
+                            "observed_average_cells",
+                            "observed_quality",
+                        )
+                        if semantics.get(key) is not None
+                    ),
+                    None,
+                )
+                if observed is not None:
+                    diagnostic += f":{observed}"
+                diagnostics.append(diagnostic)
+            mask = updated
+        mask = self._apply_visible_items(
+            mask, snapshot.map_items, diagnostics
+        )
         compatible = self.total_values[mask]
         if compatible.size == 0:
             status = "constraint_conflict"
@@ -373,6 +448,7 @@ class EmpiricalWorldPredictor:
             maximum=values[4],
             actionable=False,
             issues=tuple(dict.fromkeys(issues)),
+            diagnostics=tuple(dict.fromkeys(diagnostics)),
             contract=(
                 f"public_empirical_plus_world_model_prior_{self.world_model_version}_uncalibrated"
                 if self.prior_world_count

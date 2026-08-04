@@ -22,6 +22,12 @@ OCR 转义层不会伪造抓包字段：事件必须达到 OCR 阈值或经人�
 人工升级为完整身份时仍须明确确认具体图鉴项。OCR 路径与原始结构化输入不等价，
 区间仍未校准，所有结果固定为 `actionable=false`。
 
+每轮估值同时显示一个不会自动提交的手动建议价：默认取融合 P10 的 90% 作为
+价值侧收购上限，并按本轮中标倍率反算可兼容的对手最高报价。若 v2 条件组合
+找不到兼容世界，界面会保留 v6 P10/P50/P90 和 v6 保守建议价，并用中文指出
+最后是哪条事件、可见数量、身份、品质或尺寸约束使兼容世界归零。可用
+`--bid-safety-factor` 调整展示系数；它不会开启点击或报价提交能力。
+
 本子项目因使用 Ultralytics 按 AGPL-3.0-only 发布；仓库根目录的离线研究包仍为
 Apache-2.0，数据、报告和结果仍为 CC BY 4.0。
 
@@ -30,7 +36,7 @@ Apache-2.0，数据、报告和结果仍为 CC BY 4.0。
 ```powershell
 python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
-auction-vision-assistant --models C:\path\to\latest-model-v6-v2.0.0-beta.3
+auction-vision-assistant --models C:\path\to\latest-model-v6-v2.0.0-beta.4
 ```
 
 启动后不需要再点击“开始识别”：程序会自动进入大厅监视。需要纠错时直接操作

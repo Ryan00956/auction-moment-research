@@ -148,6 +148,57 @@ class PredictorTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(conditioned, expected)
 
+    def test_reports_the_event_that_eliminates_all_worlds(self) -> None:
+        store = ObservationStore()
+        store.apply_capture(
+            round_number=1,
+            events=[
+                EventObservation(
+                    1,
+                    "public",
+                    "显示本局藏品总数量999",
+                    1.0,
+                    {
+                        "parsed": True,
+                        "effect": "total_item_count",
+                        "observed_count": 999,
+                    },
+                    source="human",
+                    human_locked=True,
+                )
+            ],
+            bankroll=None,
+            map_items=[],
+        )
+        result = self.predictor.predict(store.snapshot())
+        self.assertIsNone(result.p50)
+        self.assertIn(
+            "event_conflict:R1:public:total_item_count:999",
+            result.diagnostics,
+        )
+
+    def test_reports_visible_count_constraint_that_eliminates_worlds(self) -> None:
+        maximum = int(self.predictor.total_counts.max())
+        diagnostics: list[str] = []
+        conditioned = self.predictor._apply_visible_items(
+            np.ones(len(self.predictor.world_counts), dtype=bool),
+            [
+                {
+                    "row": index,
+                    "column": 0,
+                    "confidence": 0.95,
+                    "spatial": "top_left",
+                }
+                for index in range(maximum + 1)
+            ],
+            diagnostics,
+        )
+        self.assertFalse(np.any(conditioned))
+        self.assertEqual(
+            diagnostics,
+            [f"map_conflict:visible_count:{maximum + 1}"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

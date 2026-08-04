@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(
             os.environ.get(
                 "AUCTION_ASSISTANT_MODELS",
-                "models/latest-model-v6-v2.0.0-beta.3",
+                "models/latest-model-v6-v2.0.0-beta.4",
             )
         ),
     )
@@ -45,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--serial", default="")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--minimum-ocr-confidence", type=float, default=0.85)
+    parser.add_argument(
+        "--bid-safety-factor",
+        type=float,
+        default=0.90,
+        help="仅展示用建议最高出价系数，默认取 P10 的 90%%",
+    )
     parser.add_argument("--no-ocr", action="store_true")
     parser.add_argument("--no-vision", action="store_true")
     return parser
@@ -89,6 +95,7 @@ def run(args: argparse.Namespace) -> int:
         treasures_csv=args.treasures,
         catalog=catalog,
         minimum_ocr_confidence=args.minimum_ocr_confidence,
+        bid_safety_factor=args.bid_safety_factor,
     )
     source = AdbFrameSource(adb=args.adb, serial=args.serial)
     ocr = (

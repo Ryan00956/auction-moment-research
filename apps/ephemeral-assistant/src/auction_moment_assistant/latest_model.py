@@ -16,6 +16,8 @@ ADAPTER_SCHEMA = "ocr-visible-pre-bid-adapter-v1"
 BASE_GENERATION_WEIGHT = 0.40
 MAX_GENERATION_WEIGHT = 0.80
 GENERATION_WEIGHT_STEP = 0.10
+DEFAULT_BID_SAFETY_FACTOR = 0.90
+ROUND_WINNING_MULTIPLIERS = {1: 2.0, 2: 1.6, 3: 1.3, 4: 1.1, 5: 1.0}
 STRONG_CONDITIONING_EFFECTS = frozenset(
     {
         "quality_total_value",
@@ -357,6 +359,30 @@ def _geometric_blend(first: float, second: float, weight: float) -> int:
     )
 
 
+def manual_bid_advice(
+    p10: int,
+    round_number: int,
+    *,
+    safety_factor: float = DEFAULT_BID_SAFETY_FACTOR,
+) -> dict:
+    """Build a display-only value-side acquisition ceiling."""
+
+    factor = float(safety_factor)
+    if not 0.0 < factor <= 1.0:
+        raise ValueError("bid safety factor must be in (0, 1]")
+    multiplier = ROUND_WINNING_MULTIPLIERS.get(int(round_number))
+    if multiplier is None:
+        raise ValueError("round number must be in [1, 5]")
+    recommended = max(1, math.floor(int(p10) * factor))
+    return {
+        "recommended_bid": recommended,
+        "bid_safety_factor": factor,
+        "required_winning_multiplier": multiplier,
+        "maximum_opponent_bid": math.floor(recommended / multiplier),
+        "bid_basis": "p10_times_safety_value_side_ceiling",
+    }
+
+
 class LatestV6V2Predictor:
     """Non-actionable OCR-adapted fusion of frozen v6 and world-model-v2."""
 
@@ -369,6 +395,7 @@ class LatestV6V2Predictor:
         catalog: Sequence[CatalogItem],
         minimum_ocr_confidence: float = 0.85,
         prior_samples: int = 4096,
+        bid_safety_factor: float = DEFAULT_BID_SAFETY_FACTOR,
     ) -> None:
         try:
             import joblib
@@ -378,6 +405,9 @@ class LatestV6V2Predictor:
             raise LatestModelError(f"v6 model load failed: {exc}") from exc
         if str(getattr(self.v6_model, "candidate_id", "")) != V6_CANDIDATE_ID:
             raise LatestModelError("v6 candidate id mismatch")
+        if not 0.0 < float(bid_safety_factor) <= 1.0:
+            raise ValueError("bid_safety_factor must be in (0, 1]")
+        self.bid_safety_factor = float(bid_safety_factor)
         self.adapter = OcrDecisionAdapter(
             catalog,
             minimum_ocr_confidence=minimum_ocr_confidence,
@@ -428,34 +458,55 @@ class LatestV6V2Predictor:
                 contract="ocr_adapted_v6_v2_uncalibrated",
                 model_version=V6_CANDIDATE_ID,
             )
+        v6_p50 = int(v6["prediction"])
+        v6_p10 = int(v6.get("p10") or v6_p50)
+        v6_p90 = max(v6_p10, v6_p50, int(v6.get("p90") or v6_p50))
         world = self.world_predictor.predict(snapshot)
         if world.p50 is None:
             return PredictionResult(
                 revision=snapshot.revision,
-                status="v2_conditioning_conflict",
+                status="v6_fallback_v2_conditioning_conflict",
                 compatible_worlds=0,
-                p10=None,
-                p50=None,
-                p90=None,
+                p10=v6_p10,
+                p50=v6_p50,
+                p90=v6_p90,
                 minimum=None,
                 maximum=None,
                 actionable=False,
-                issues=tuple(dict.fromkeys((*adapted.warnings, *world.issues))),
-                contract="ocr_adapted_v6_v2_uncalibrated",
-                v6_prediction=int(v6["prediction"]),
+                issues=tuple(
+                    dict.fromkeys(
+                        (
+                            *adapted.warnings,
+                            *world.issues,
+                            "v2_conflict_using_v6_fallback",
+                            "ocr_adapter_not_packet_equivalent",
+                            "interval_uncalibrated",
+                        )
+                    )
+                ),
+                contract="ocr_adapted_v6_fallback_v2_conflict_uncalibrated",
+                v6_prediction=v6_p50,
                 model_version=V6_CANDIDATE_ID,
+                estimate_source="v6_fallback",
+                diagnostics=world.diagnostics,
+                **manual_bid_advice(
+                    v6_p10,
+                    snapshot.round_number,
+                    safety_factor=self.bid_safety_factor,
+                ),
             )
         weight = min(
             MAX_GENERATION_WEIGHT,
             BASE_GENERATION_WEIGHT
             + GENERATION_WEIGHT_STEP * adapted.strong_condition_count,
         )
-        v6_p50 = int(v6["prediction"])
-        v6_p10 = int(v6.get("p10") or v6_p50)
-        v6_p90 = int(v6.get("p90") or v6_p50)
         p10 = _geometric_blend(v6_p10, int(world.p10), weight)
         p50 = _geometric_blend(v6_p50, int(world.p50), weight)
-        p90 = max(p10, _geometric_blend(v6_p90, int(world.p90), weight))
+        p90 = max(
+            p10,
+            p50,
+            _geometric_blend(v6_p90, int(world.p90), weight),
+        )
         issues = tuple(
             dict.fromkeys(
                 (
@@ -482,4 +533,11 @@ class LatestV6V2Predictor:
             v2_prediction=int(world.p50),
             generation_weight=weight,
             model_version=V6_CANDIDATE_ID,
+            estimate_source="v6_v2_blend",
+            diagnostics=world.diagnostics,
+            **manual_bid_advice(
+                p10,
+                snapshot.round_number,
+                safety_factor=self.bid_safety_factor,
+            ),
         )
