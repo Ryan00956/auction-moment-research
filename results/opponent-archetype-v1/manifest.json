@@ -5,7 +5,7 @@
   "advisory_enabled": false,
   "auto_bid_enabled": false,
   "input": {
-    "research_manifest_sha256": "5d07e5909da8d355295bb2fdddd3674a6654062470e813518f01ab3711ad728a",
+    "research_manifest_sha256": "d4456727c4db6a2b3fcfb2e9a4021cfb69027fa0833b02fa1cbe80944248d126",
     "player_rounds_sha256": "a0371b5987a35d393181d5197cc6f3ee9117e188359cd7ccdaa7ac09810c49c1"
   },
   "config": {
@@ -345,33 +345,33 @@
   "outputs": [
     {
       "path": "study_summary.json",
-      "sha256": "a735ba6e6864fd1754a03de40674f66ca8adec3fbf07e11c5675b59d0d4bb494",
-      "bytes": 9369
+      "sha256": "381087ef266722df69d29f1f8b255cfdc401cafe6fd4868422063feae00e7fdc",
+      "bytes": 9042
     },
     {
       "path": "archetype_summary.jsonl",
-      "sha256": "43047cdd4c73014f367d0d18e8f5710982f4a5f2082a062e95dc3c192eed1a96",
-      "bytes": 1159
+      "sha256": "eb4e56651529a2dd3e18a30a61bc3326a9964ba1f2bc6eea3a8c983df5fec5ab",
+      "bytes": 1155
     },
     {
       "path": "daily_archetype_mix.jsonl",
-      "sha256": "de8c966b0597381480702e56d9d4af1d7652ada43ce36a08b135d7f8958344d0",
-      "bytes": 3690
+      "sha256": "38dcc8ce8f9340dfbf17c282b7a2f15fb7bf17af3321e024960590ae66071a25",
+      "bytes": 3666
     },
     {
       "path": "first_round_transitions.jsonl",
-      "sha256": "e1d0fdf05cd0f8e7b4f792317dff0ffbe8ccd0615b7c16dbed25875d6660e18d",
-      "bytes": 604
+      "sha256": "58c3b9a6fe6cc32b3ea40646ef0f24caaf714b9e8cf1efec2d42c998f1d2477a",
+      "bytes": 600
     },
     {
       "path": "holdout_first_round_scores.jsonl",
-      "sha256": "cb4fad51ebd0590ddfc9ab0d592f7bf024dacffbcb4fc2658d34763e75c9db7f",
-      "bytes": 265325
+      "sha256": "445c93c1eabb56dfec080c1fd514dc004711166c62159e28c7a1ad1e6b3d1482",
+      "bytes": 264257
     },
     {
       "path": "STUDY.md",
-      "sha256": "4fea0b175dd4c4be85be7b4c99a361e003bd8a9511705381a37e1c3b149293a1",
-      "bytes": 1756
+      "sha256": "3b94ec2c0c8ab4ed143953e09991d8729f5fa0f7c38dd5607b694a4d1a5dd701",
+      "bytes": 1731
     }
   ]
 }

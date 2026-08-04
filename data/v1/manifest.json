@@ -293,12 +293,12 @@
       "sha256": "b883010532ca4de824cb9006224abae053c2d03c50d4d787aae854ba3ffbb5cb"
     },
     "opponents/quality.json": {
-      "bytes": 3508,
-      "sha256": "9f3b151ddef6b61cb5d71959dd1c5d3fdea3fbb9cf663ef10508445c97621266"
+      "bytes": 3390,
+      "sha256": "2c6aa1824af0b1cec40d8d76c36f1de6a64612527945d6642f20904cd3d12525"
     },
     "opponents/manifest.json": {
-      "bytes": 4650,
-      "sha256": "5d07e5909da8d355295bb2fdddd3674a6654062470e813518f01ab3711ad728a"
+      "bytes": 4504,
+      "sha256": "d4456727c4db6a2b3fcfb2e9a4021cfb69027fa0833b02fa1cbe80944248d126"
     }
   },
   "reports": {
@@ -312,11 +312,11 @@
     },
     "opponent-clustering-v1.md": {
       "bytes": 2732,
-      "sha256": "04cc4bb5e7863dec6b312c2f63323990e3718846ea02257d00941c7682131c87"
+      "sha256": "1ae2eb79b62487c1ecf3c860db589edbd06b29da9b2dc9975c20bfbbf726ad71"
     },
     "opponent-archetypes-v1.md": {
       "bytes": 1756,
-      "sha256": "4fea0b175dd4c4be85be7b4c99a361e003bd8a9511705381a37e1c3b149293a1"
+      "sha256": "3b94ec2c0c8ab4ed143953e09991d8729f5fa0f7c38dd5607b694a4d1a5dd701"
     }
   }
 }
