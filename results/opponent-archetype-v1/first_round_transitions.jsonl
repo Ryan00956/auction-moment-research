@@ -1,0 +1,4 @@
+{"final_high_rate": 0.082353, "final_zero_rate": 0.776471, "first_round_state": "zero", "holdout_trajectories": 85, "trained_probability": 0.140645}
+{"final_high_rate": 0.237037, "final_zero_rate": 0.081481, "first_round_state": "low", "holdout_trajectories": 135, "trained_probability": 0.304453}
+{"final_high_rate": 0.463087, "final_zero_rate": 0.100671, "first_round_state": "middle", "holdout_trajectories": 298, "trained_probability": 0.457281}
+{"final_high_rate": 0.676364, "final_zero_rate": 0.116364, "first_round_state": "high", "holdout_trajectories": 550, "trained_probability": 0.693292}

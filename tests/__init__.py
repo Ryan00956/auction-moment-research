@@ -1,0 +1,1 @@
+"""Public repository test suite."""

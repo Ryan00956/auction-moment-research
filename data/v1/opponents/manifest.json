@@ -1,0 +1,146 @@
+{
+  "schema_version": "opponent-behavior-public-v1",
+  "research_only": true,
+  "production_enabled": false,
+  "advisory_enabled": false,
+  "auto_bid_enabled": false,
+  "privacy": {
+    "session_ids": "HMAC-SHA256 pseudonyms; secret not published",
+    "player_keys": "re-keyed HMAC-SHA256 pseudonyms; original IDs and keys not published",
+    "timestamps": "calendar date only"
+  },
+  "quality": {
+    "schema_version": "opponent-behavior-research-v1",
+    "protocol_extraction": {
+      "input_event_files": 1565,
+      "input_events": 74738,
+      "json_parse_errors": 0,
+      "event_contract": {
+        "strict_capture_mode": "trusted",
+        "strict_schema_status": "confirmed",
+        "requires_valid": true,
+        "allow_legacy_partial": false
+      },
+      "accepted_event_kinds": {
+        "bid_result": 4551,
+        "bid_submitted": 4553,
+        "event_effect_applied": 4553,
+        "event_selected": 4563,
+        "personal_event_resolved": 4554,
+        "player_option_state": 35313,
+        "round_event_offered": 4560,
+        "round_ranking": 4552,
+        "settlement": 1522
+      },
+      "rejected_event_kinds": {
+        "auction_context": 940,
+        "match_opened": 1565,
+        "personal_event_resolved": 106,
+        "round_event_offered": 106,
+        "round_ranking": 106,
+        "settlement": 34,
+        "unknown_auction_frame": 3160
+      },
+      "ranking_candidates": 4552,
+      "accepted_rankings": 4552,
+      "ranking_rejections": {},
+      "event_context": {
+        "complete_before_owner_submission": 4540,
+        "effect_complete_vector": 4553,
+        "missing_complete_player_event_vector": 1,
+        "owner_submission_not_captured": 11
+      }
+    },
+    "capture_owner_inference": {
+      "status": "inferred_strong",
+      "raw_player_id_exported": false,
+      "owner_player_key": "excluded_capture_owner",
+      "unique_submission_matches": 4480,
+      "ambiguous_submission_matches": 60,
+      "rankings_without_captured_submission": 12,
+      "dominant_candidate_matches": 4480,
+      "dominant_candidate_share": 1.0,
+      "minimum_unique_matches": 10,
+      "minimum_dominance": 0.98
+    },
+    "player_rounds": {
+      "rows": 13656,
+      "unique_players": 3857,
+      "capture_owner_rows_excluded": 4552,
+      "explicit_zero_rows": 1353,
+      "positive_bid_rows": 12303,
+      "rows_with_prebid_complete_event_context": 13620
+    },
+    "profile_summary": {
+      "observation_dates": [
+        "2026-07-28",
+        "2026-07-29",
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "early_dates": [
+        "2026-07-28",
+        "2026-07-29",
+        "2026-07-30"
+      ],
+      "late_dates": [
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "profile_status_counts": {
+        "insufficient_history": 3753,
+        "provisional_temporal_coverage": 90,
+        "research_candidate_not_model_ready": 14
+      },
+      "descriptive_taxonomy_counts": {
+        "context_variable": 3,
+        "frequent_top_bid": 37,
+        "insufficient_history": 3753,
+        "low_relative_bid": 1,
+        "middle_range": 45,
+        "zero_result_prone": 18
+      },
+      "research_candidate_taxonomy_counts": {
+        "frequent_top_bid": 4,
+        "middle_range": 6,
+        "zero_result_prone": 4
+      },
+      "profiles_with_two_block_gate": 14
+    },
+    "ocr_reconciliation": {
+      "all_three_ocr_bids_read": 3207,
+      "missing_ocr_truth_explicit_zero": 1344,
+      "missing_ocr_truth_positive": 108,
+      "no_strict_protocol_round": 869,
+      "ocr_amount_not_reconciled_to_protocol": 5,
+      "ocr_missing_bid_cells": 1452,
+      "ocr_missing_owner_linkage": 4,
+      "ocr_owner_bid_mismatch": 5,
+      "rounds_with_1_missing_ocr_bids": 1188,
+      "rounds_with_2_missing_ocr_bids": 126,
+      "rounds_with_3_missing_ocr_bids": 4,
+      "strict_protocol_round_available": 4539,
+      "strictly_aligned_rounds": 4530,
+      "strictly_reconciled_rounds": 4525
+    }
+  },
+  "outputs": {
+    "player_rounds.jsonl": {
+      "rows": 13656,
+      "bytes": 7611704,
+      "sha256": "a0371b5987a35d393181d5197cc6f3ee9117e188359cd7ccdaa7ac09810c49c1"
+    },
+    "player_profiles.jsonl": {
+      "rows": 3857,
+      "bytes": 3604185,
+      "sha256": "b883010532ca4de824cb9006224abae053c2d03c50d4d787aae854ba3ffbb5cb"
+    },
+    "quality.json": {
+      "bytes": 3508,
+      "sha256": "9f3b151ddef6b61cb5d71959dd1c5d3fdea3fbb9cf663ef10508445c97621266"
+    }
+  }
+}

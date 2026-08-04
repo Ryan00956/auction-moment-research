@@ -1,0 +1,8 @@
+{"cluster_id": "cluster_01", "rule_archetype": "late_escalator", "rule_label": "晚轮抬价轨迹", "trajectories": 24, "within_cluster_share": 0.11764706}
+{"cluster_id": "cluster_01", "rule_archetype": "mixed_or_contextual", "rule_label": "混合或情境型", "trajectories": 85, "within_cluster_share": 0.41666667}
+{"cluster_id": "cluster_01", "rule_archetype": "persistent_aggressive", "rule_label": "持续高相对出价", "trajectories": 10, "within_cluster_share": 0.04901961}
+{"cluster_id": "cluster_01", "rule_archetype": "persistent_conservative", "rule_label": "持续低相对或零出价", "trajectories": 85, "within_cluster_share": 0.41666667}
+{"cluster_id": "cluster_02", "rule_archetype": "late_escalator", "rule_label": "晚轮抬价轨迹", "trajectories": 53, "within_cluster_share": 0.06471306}
+{"cluster_id": "cluster_02", "rule_archetype": "mixed_or_contextual", "rule_label": "混合或情境型", "trajectories": 188, "within_cluster_share": 0.22954823}
+{"cluster_id": "cluster_02", "rule_archetype": "persistent_aggressive", "rule_label": "持续高相对出价", "trajectories": 568, "within_cluster_share": 0.69352869}
+{"cluster_id": "cluster_02", "rule_archetype": "persistent_conservative", "rule_label": "持续低相对或零出价", "trajectories": 10, "within_cluster_share": 0.01221001}

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auction-moment-research"
+version = "0.1.0"
+description = "Reproducible research models and an anonymized text dataset for a five-round auction event."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Helenanana" }]
+dependencies = [
+  "numpy>=2.5,<3",
+  "scikit-learn>=1.9,<2",
+]
+
+[project.scripts]
+auction-public-export = "auction_moment_research.public_export:main"
+auction-opponent-archetype = "auction_moment_research.opponent_archetype:main"
+auction-opponent-clustering = "auction_moment_research.opponent_clustering:main"
+auction-train-world-model = "auction_moment_research.train_world_model:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = false

@@ -1,0 +1,377 @@
+{
+  "schema_version": "opponent-archetype-study-v1",
+  "research_only": true,
+  "production_enabled": false,
+  "advisory_enabled": false,
+  "auto_bid_enabled": false,
+  "input": {
+    "research_manifest_sha256": "5d07e5909da8d355295bb2fdddd3674a6654062470e813518f01ab3711ad728a",
+    "player_rounds_sha256": "a0371b5987a35d393181d5197cc6f3ee9117e188359cd7ccdaa7ac09810c49c1"
+  },
+  "config": {
+    "train_end_date": "2026-07-31",
+    "smoothing_strength": 10,
+    "bootstrap_replicates": 2000,
+    "bootstrap_seed": 20260804
+  },
+  "summary": {
+    "schema_version": "opponent-archetype-study-v1",
+    "research_only": true,
+    "production_enabled": false,
+    "advisory_enabled": false,
+    "auto_bid_enabled": false,
+    "definitions": {
+      "trajectory_grain": "player_key, session_id; at least two completed rounds",
+      "relative_bid": "post_round_bid divided by post_round_max_bid",
+      "low_relative_ceiling": 0.5,
+      "high_relative_floor": 0.8,
+      "late_escalation_min_delta": 0.4,
+      "critical_boundary": "completed trajectory labels are retrospective and not live features"
+    },
+    "quality": {
+      "all_player_session_groups": 4578,
+      "groups_with_one_round_excluded_from_trajectory_labels": 1275,
+      "groups_with_two_or_more_rounds": 3303,
+      "round_count_distribution": {
+        "1": 1275,
+        "2": 555,
+        "3": 744,
+        "4": 981,
+        "5": 1023
+      },
+      "all_groups_start_at_round_one": true,
+      "all_groups_have_contiguous_rounds": true
+    },
+    "archetypes": [
+      {
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "player_session_trajectories": 155,
+        "share": 0.046927,
+        "mean_rounds": 4.264516,
+        "mean_first_relative_bid": 0.254749,
+        "mean_final_relative_bid": 0.947717,
+        "final_high_relative_rate": 1.0,
+        "final_zero_rate": 0.0
+      },
+      {
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "player_session_trajectories": 965,
+        "share": 0.292159,
+        "mean_rounds": 3.629016,
+        "mean_first_relative_bid": 0.696534,
+        "mean_final_relative_bid": 0.609296,
+        "final_high_relative_rate": 0.232124,
+        "final_zero_rate": 0.079793
+      },
+      {
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "player_session_trajectories": 1572,
+        "share": 0.475931,
+        "mean_rounds": 3.966921,
+        "mean_first_relative_bid": 0.929877,
+        "mean_final_relative_bid": 0.915148,
+        "final_high_relative_rate": 0.871501,
+        "final_zero_rate": 0.0
+      },
+      {
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "player_session_trajectories": 611,
+        "share": 0.184983,
+        "mean_rounds": 3.243863,
+        "mean_first_relative_bid": 0.344927,
+        "mean_final_relative_bid": 0.120919,
+        "final_high_relative_rate": 0.003273,
+        "final_zero_rate": 0.607201
+      }
+    ],
+    "daily_archetype_mix": [
+      {
+        "date": "2026-07-28",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 27,
+        "share": 0.076923,
+        "daily_total": 351
+      },
+      {
+        "date": "2026-07-28",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 96,
+        "share": 0.273504,
+        "daily_total": 351
+      },
+      {
+        "date": "2026-07-28",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 166,
+        "share": 0.472934,
+        "daily_total": 351
+      },
+      {
+        "date": "2026-07-28",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 62,
+        "share": 0.176638,
+        "daily_total": 351
+      },
+      {
+        "date": "2026-07-29",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 30,
+        "share": 0.047619,
+        "daily_total": 630
+      },
+      {
+        "date": "2026-07-29",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 167,
+        "share": 0.265079,
+        "daily_total": 630
+      },
+      {
+        "date": "2026-07-29",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 314,
+        "share": 0.498413,
+        "daily_total": 630
+      },
+      {
+        "date": "2026-07-29",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 119,
+        "share": 0.188889,
+        "daily_total": 630
+      },
+      {
+        "date": "2026-07-30",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 19,
+        "share": 0.051075,
+        "daily_total": 372
+      },
+      {
+        "date": "2026-07-30",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 116,
+        "share": 0.311828,
+        "daily_total": 372
+      },
+      {
+        "date": "2026-07-30",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 181,
+        "share": 0.486559,
+        "daily_total": 372
+      },
+      {
+        "date": "2026-07-30",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 56,
+        "share": 0.150538,
+        "daily_total": 372
+      },
+      {
+        "date": "2026-07-31",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 37,
+        "share": 0.04195,
+        "daily_total": 882
+      },
+      {
+        "date": "2026-07-31",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 260,
+        "share": 0.294785,
+        "daily_total": 882
+      },
+      {
+        "date": "2026-07-31",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 429,
+        "share": 0.486395,
+        "daily_total": 882
+      },
+      {
+        "date": "2026-07-31",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 156,
+        "share": 0.176871,
+        "daily_total": 882
+      },
+      {
+        "date": "2026-08-01",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 27,
+        "share": 0.04186,
+        "daily_total": 645
+      },
+      {
+        "date": "2026-08-01",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 200,
+        "share": 0.310078,
+        "daily_total": 645
+      },
+      {
+        "date": "2026-08-01",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 292,
+        "share": 0.452713,
+        "daily_total": 645
+      },
+      {
+        "date": "2026-08-01",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 126,
+        "share": 0.195349,
+        "daily_total": 645
+      },
+      {
+        "date": "2026-08-02",
+        "archetype": "late_escalator",
+        "label": "晚轮抬价轨迹",
+        "trajectories": 15,
+        "share": 0.035461,
+        "daily_total": 423
+      },
+      {
+        "date": "2026-08-02",
+        "archetype": "mixed_or_contextual",
+        "label": "混合或情境型",
+        "trajectories": 126,
+        "share": 0.297872,
+        "daily_total": 423
+      },
+      {
+        "date": "2026-08-02",
+        "archetype": "persistent_aggressive",
+        "label": "持续高相对出价",
+        "trajectories": 190,
+        "share": 0.449173,
+        "daily_total": 423
+      },
+      {
+        "date": "2026-08-02",
+        "archetype": "persistent_conservative",
+        "label": "持续低相对或零出价",
+        "trajectories": 92,
+        "share": 0.217494,
+        "daily_total": 423
+      }
+    ],
+    "forward_validation": {
+      "target": "final_round_relative_bid_at_least_0_80",
+      "feature": "first_settled_round_state_only",
+      "train_end_date": "2026-07-31",
+      "train_trajectories": 2235,
+      "holdout_trajectories": 1068,
+      "holdout_sessions": 356,
+      "baseline_final_high_rate_train": 0.53780761,
+      "baseline_final_high_rate_holdout": 0.51404494,
+      "metrics": {
+        "baseline_brier": 0.2503674,
+        "first_round_state_brier": 0.21198041
+      },
+      "brier_improvement_positive_is_better": 0.03838699,
+      "bootstrap": {
+        "cluster": "session_id",
+        "replicates": 2000,
+        "ci95_low": 0.02866135,
+        "ci95_high": 0.0473158,
+        "probability_positive": 1.0
+      }
+    },
+    "first_round_to_final_transitions": [
+      {
+        "first_round_state": "zero",
+        "holdout_trajectories": 85,
+        "final_high_rate": 0.082353,
+        "final_zero_rate": 0.776471,
+        "trained_probability": 0.140645
+      },
+      {
+        "first_round_state": "low",
+        "holdout_trajectories": 135,
+        "final_high_rate": 0.237037,
+        "final_zero_rate": 0.081481,
+        "trained_probability": 0.304453
+      },
+      {
+        "first_round_state": "middle",
+        "holdout_trajectories": 298,
+        "final_high_rate": 0.463087,
+        "final_zero_rate": 0.100671,
+        "trained_probability": 0.457281
+      },
+      {
+        "first_round_state": "high",
+        "holdout_trajectories": 550,
+        "final_high_rate": 0.676364,
+        "final_zero_rate": 0.116364,
+        "trained_probability": 0.693292
+      }
+    ],
+    "repeat_stability": {
+      "players_with_two_or_more_multi_round_sessions": 295,
+      "consecutive_session_pairs": 434,
+      "same_archetype_pair_rate": 0.366359,
+      "independent_marginal_expected_same_rate": 0.364586,
+      "interpretation": "descriptive retention only; repeated-player coverage is too small to claim persistent personal types"
+    }
+  },
+  "outputs": [
+    {
+      "path": "study_summary.json",
+      "sha256": "a735ba6e6864fd1754a03de40674f66ca8adec3fbf07e11c5675b59d0d4bb494",
+      "bytes": 9369
+    },
+    {
+      "path": "archetype_summary.jsonl",
+      "sha256": "43047cdd4c73014f367d0d18e8f5710982f4a5f2082a062e95dc3c192eed1a96",
+      "bytes": 1159
+    },
+    {
+      "path": "daily_archetype_mix.jsonl",
+      "sha256": "de8c966b0597381480702e56d9d4af1d7652ada43ce36a08b135d7f8958344d0",
+      "bytes": 3690
+    },
+    {
+      "path": "first_round_transitions.jsonl",
+      "sha256": "e1d0fdf05cd0f8e7b4f792317dff0ffbe8ccd0615b7c16dbed25875d6660e18d",
+      "bytes": 604
+    },
+    {
+      "path": "holdout_first_round_scores.jsonl",
+      "sha256": "cb4fad51ebd0590ddfc9ab0d592f7bf024dacffbcb4fc2658d34763e75c9db7f",
+      "bytes": 265325
+    },
+    {
+      "path": "STUDY.md",
+      "sha256": "4fea0b175dd4c4be85be7b4c99a361e003bd8a9511705381a37e1c3b149293a1",
+      "bytes": 1756
+    }
+  ]
+}

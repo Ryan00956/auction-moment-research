@@ -1,0 +1,36 @@
+{
+  "input": {
+    "strict_player_round_rows": 13656,
+    "unique_player_session_round_keys": 13656,
+    "duplicate_player_session_round_rows": 0,
+    "non_strict_source_rows": 0,
+    "relative_bid_out_of_range_rows": 0,
+    "bid_state_amount_mismatch_rows": 0,
+    "missing_observed_at_rows": 0,
+    "explicit_zero_rows": 1353,
+    "positive_bid_with_zero_relative_rows": 70,
+    "zero_semantics": "zero_share uses protocol label_bid == 0; a relative ratio of zero is not treated as an explicit zero bid",
+    "observation_dates": [
+      "2026-07-28",
+      "2026-07-29",
+      "2026-07-30",
+      "2026-07-31",
+      "2026-08-01",
+      "2026-08-02"
+    ]
+  },
+  "trajectory": {
+    "player_session_trajectories": 4578,
+    "round_count_distribution": {
+      "1": 1275,
+      "2": 555,
+      "3": 744,
+      "4": 981,
+      "5": 1023
+    },
+    "all_groups_start_at_round_one": true,
+    "all_groups_have_contiguous_rounds": true,
+    "groups_crossing_calendar_midnight_assigned_by_first_round": 6,
+    "fully_observed_five_round_trajectories": 1023
+  }
+}

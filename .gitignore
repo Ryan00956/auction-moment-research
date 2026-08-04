@@ -1,0 +1,38 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Generated models are reproducible outputs, not source.
+models/generated/
+
+# Private evidence and third-party material must never enter this repository.
+data/private/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+*.pt
+*.onnx
+*.pcap
+*.dll
+*.ys
+*.joblib
+*.xlsx
+*.docx
+node_modules/
+
+# Local logs and editor state.
+*.log
+*.stdout
+*.stderr
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

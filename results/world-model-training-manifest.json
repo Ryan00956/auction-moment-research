@@ -1,0 +1,17 @@
+{
+  "schema_version": "public-world-model-training-v1",
+  "research_only": true,
+  "production_enabled": false,
+  "input": {
+    "path": "treasures.csv",
+    "sha256": "ef4df90dcae2d1778c3f2f4ca32103b6262e453a5fa09a66606558439555edac",
+    "catalog_items": 120,
+    "sessions": 1794,
+    "auction_tier": "S"
+  },
+  "output": {
+    "path": "world-model-v1.json",
+    "sha256": "d7ca7caaca5684264dc021da5a255bb8bfab2a2945c0d8f390d57a8958e8b428",
+    "bytes": 30878
+  }
+}

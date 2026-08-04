@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this dataset or code, please cite this repository and the exact dataset version."
+title: "Auction Moment Research"
+type: software
+version: 0.1.0
+date-released: 2026-08-04
+authors:
+  - family-names: "Helenanana"
+license: Apache-2.0
+keywords:
+  - auction
+  - reproducible-research
+  - anonymized-dataset
+  - uncertainty
