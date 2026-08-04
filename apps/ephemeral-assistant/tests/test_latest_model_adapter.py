@@ -108,6 +108,29 @@ class OcrDecisionAdapterTests(unittest.TestCase):
         self.assertIn("visible_map_not_reviewed", adapted.issues)
         self.assertIn("low_confidence_event:R1:public", adapted.issues)
 
+    def test_auto_scroll_estimate_runs_with_explicit_warnings(self) -> None:
+        store = ObservationStore()
+        store.apply_capture(
+            round_number=1,
+            events=[event(1, "public"), event(1, "personal")],
+            bankroll=999,
+            map_items=[],
+        )
+        store.apply_automatic_scan_proof(
+            round_number=1, map_rows=12, complete=True, pre_bid=True
+        )
+        adapted = OcrDecisionAdapter(CATALOG).adapt(store.snapshot())
+        self.assertTrue(adapted.accepted, adapted.issues)
+        self.assertIn("map_rows_auto_estimated", adapted.warnings)
+        self.assertEqual(
+            adapted.decision["observed_map"]["source"],
+            "ocr_visible_map_estimated",
+        )
+        self.assertEqual(
+            adapted.decision["observed_map"]["height_proof"]["status"],
+            "estimated",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

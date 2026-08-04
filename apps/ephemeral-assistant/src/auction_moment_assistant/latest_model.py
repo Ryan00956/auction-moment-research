@@ -4,7 +4,7 @@ import copy
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Sequence
 
 from .models import CatalogItem
 from .observations import ObservationSnapshot
@@ -35,6 +35,7 @@ class LatestModelError(RuntimeError):
 class AdaptedDecision:
     decision: dict
     issues: tuple[str, ...]
+    warnings: tuple[str, ...]
     strong_condition_count: int
 
     @property
@@ -64,12 +65,22 @@ class OcrDecisionAdapter:
 
     def adapt(self, snapshot: ObservationSnapshot) -> AdaptedDecision:
         issues: list[str] = []
+        warnings: list[str] = []
         if not snapshot.pre_bid_confirmed:
             issues.append("pre_bid_not_confirmed")
-        if snapshot.map_rows is None or not snapshot.map_height_exact:
+        elif snapshot.pre_bid_source == "visual_state_machine":
+            warnings.append("pre_bid_visual_state_machine")
+        if snapshot.map_rows is None:
             issues.append("exact_map_rows_not_confirmed")
+        elif not snapshot.map_height_exact:
+            if snapshot.map_rows_source == "automatic_scroll_estimate":
+                warnings.append("map_rows_auto_estimated")
+            else:
+                issues.append("exact_map_rows_not_confirmed")
         if not snapshot.completeness_confirmed:
             issues.append("visible_map_not_reviewed")
+        elif snapshot.completeness_source == "automatic_scroll_scan":
+            warnings.append("visible_map_auto_scanned_not_human_reviewed")
 
         events: list[dict] = []
         seen_event_keys: set[tuple[int, str]] = set()
@@ -232,6 +243,10 @@ class OcrDecisionAdapter:
             visible_items.append(item)
 
         map_rows = int(snapshot.map_rows or 0)
+        automatic_rows = bool(
+            not snapshot.map_height_exact
+            and snapshot.map_rows_source == "automatic_scroll_estimate"
+        )
         decision = {
             "adapter_schema_version": ADAPTER_SCHEMA,
             "round": int(snapshot.round_number),
@@ -243,17 +258,34 @@ class OcrDecisionAdapter:
                 "height_exact": bool(snapshot.map_height_exact),
                 "bottom_visible": bool(snapshot.map_height_exact),
                 "canvas_bottom_visible": bool(snapshot.map_height_exact),
-                "source": "ocr_visible_map_confirmed",
+                "source": (
+                    "ocr_visible_map_estimated"
+                    if automatic_rows
+                    else "ocr_visible_map_confirmed"
+                ),
                 "height_proof": {
                     "schema_version": "hidden-map-bottom-proof-v1",
-                    "status": "proven" if snapshot.map_height_exact else "missing",
+                    "status": (
+                        "estimated"
+                        if automatic_rows
+                        else "proven" if snapshot.map_height_exact else "missing"
+                    ),
                     "rows": map_rows,
-                    "proof_source": "human_screen_confirmation",
+                    "proof_source": (
+                        "automatic_scroll_alignment"
+                        if automatic_rows
+                        else "human_screen_confirmation"
+                    ),
                 },
             },
             "map_recognition": {
                 "completeness": {
-                    "status": "human_reviewed_visible_screen",
+                    "status": (
+                        "automatic_scroll_scan"
+                        if snapshot.completeness_source
+                        == "automatic_scroll_scan"
+                        else "human_reviewed_visible_screen"
+                    ),
                     "exact_counts_safe": False,
                     "checks": {
                         "visible_map_reviewed": bool(
@@ -263,7 +295,10 @@ class OcrDecisionAdapter:
                             snapshot.map_height_exact
                         ),
                         "pre_bid_human_confirmed": bool(
-                            snapshot.pre_bid_confirmed
+                            snapshot.pre_bid_source == "human_confirmed"
+                        ),
+                        "pre_bid_visual_state_machine": bool(
+                            snapshot.pre_bid_source == "visual_state_machine"
                         ),
                     },
                     "exact_quality_counts": {},
@@ -287,6 +322,7 @@ class OcrDecisionAdapter:
         return AdaptedDecision(
             decision=decision,
             issues=tuple(dict.fromkeys(issues)),
+            warnings=tuple(dict.fromkeys(warnings)),
             strong_condition_count=strong_count,
         )
 
@@ -366,7 +402,10 @@ class LatestV6V2Predictor:
                 minimum=None,
                 maximum=None,
                 actionable=False,
-                issues=(f"v6_error:{type(exc).__name__}:{exc}",),
+                issues=(
+                    *adapted.warnings,
+                    f"v6_error:{type(exc).__name__}:{exc}",
+                ),
                 contract="ocr_adapted_v6_v2_uncalibrated",
                 model_version=V6_CANDIDATE_ID,
             )
@@ -382,7 +421,7 @@ class LatestV6V2Predictor:
                 minimum=None,
                 maximum=None,
                 actionable=False,
-                issues=world.issues,
+                issues=tuple(dict.fromkeys((*adapted.warnings, *world.issues))),
                 contract="ocr_adapted_v6_v2_uncalibrated",
                 v6_prediction=int(v6["prediction"]),
                 model_version=V6_CANDIDATE_ID,
@@ -400,7 +439,12 @@ class LatestV6V2Predictor:
         p90 = max(p10, _geometric_blend(v6_p90, int(world.p90), weight))
         issues = tuple(
             dict.fromkeys(
-                (*world.issues, "ocr_adapter_not_packet_equivalent", "interval_uncalibrated")
+                (
+                    *adapted.warnings,
+                    *world.issues,
+                    "ocr_adapter_not_packet_equivalent",
+                    "interval_uncalibrated",
+                )
             )
         )
         return PredictionResult(

@@ -332,7 +332,7 @@ class ProtocolAdditiveExactEventModel:
             raise ProtocolAdditiveValueModelError(
                 "决策缺少有效 map_rows"
             ) from exc
-        if not (
+        exact_height_proof = (
             observed_map.get("height_exact") is True
             and proof.get("schema_version")
             == "hidden-map-bottom-proof-v1"
@@ -343,9 +343,21 @@ class ProtocolAdditiveExactEventModel:
                 "packet_capture_match_opened",
                 "ocr_visible_map_confirmed",
             }
-        ):
+        )
+        estimated_scroll_proof = (
+            observed_map.get("height_exact") is False
+            and proof.get("schema_version")
+            == "hidden-map-bottom-proof-v1"
+            and proof.get("status") == "estimated"
+            and int(proof.get("rows") or 0) == map_rows
+            and str(observed_map.get("source") or "")
+            == "ocr_visible_map_estimated"
+            and str(proof.get("proof_source") or "")
+            == "automatic_scroll_alignment"
+        )
+        if not (exact_height_proof or estimated_scroll_proof):
             raise ProtocolAdditiveValueModelError(
-                "候选模型要求人工确认的精确地图行数"
+                "候选模型要求人工精确行数或显式标记的自动滚动估计"
             )
         observations = _event_observations(decision)
         base = self._row_expectation("total_value", map_rows)

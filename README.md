@@ -9,7 +9,8 @@
 - 不抓包、不保存会话、可调用最新 v6 + world-model-v2 的 OCR/YOLO 实时研究助手。
 
 仓库不包含图片、视频、抓包、协议解析、解密脚本、游戏二进制、玩家身份、
-自动点击或自动出价执行层。Git 历史保持文本-only；经过路径净化和参数等价验证的
+自动点击或自动出价执行层。实时助手只允许两种固定的左侧地图滚动手势，不具备
+任意点击、输入或报价接口。Git 历史保持文本-only；经过路径净化和参数等价验证的
 中间态视觉权重和经过脱敏等价检查的最新估值模型通过 GitHub Release 单独发布。助手只显示未校准研究估计，不会
 替用户提交报价。
 
@@ -18,13 +19,16 @@
 [`apps/ephemeral-assistant`](apps/ephemeral-assistant) 是一个独立 AGPL-3.0
 子项目：
 
-- ADB 只执行 `exec-out screencap -p` 读取当前 `1280×720` 画面，不发送点击、
-  滑动、按键或抓包命令；
+- 状态机常驻监视 `1280×720` 画面：大厅等待，检测开局，每轮自动扫描一次，
+  输出预测后待机，终局清空；
+- ADB 除截图外，只能执行代码中固定的地图归顶/下滚手势；不发送点击、按键、
+  报价、抓包或任意坐标输入；
 - RapidOCR 识别轮次、公共/个人事件和持有金额；
 - 三份 YOLO 权重识别位置、品质、规格和完整揭示身份 Top-k；
-- OCR 转义层把已解析事件、人工确认的地图高度和出价前时点送入最新冻结
-  `v6 + world-model-v2`；
-- 用户可以实时补充漏检、删除误检、修改事件/金额/位置/品质/规格/身份；
+- OCR 转义层把已解析事件和显式标注来源的地图/时点证据送入最新冻结
+  `v6 + world-model-v2`；自动滚动行数始终标为估算而不是精确证明；
+- 左侧地图画布可直接拖拽新增/移动、点选修改品质/规格/身份、右键删除；右侧
+  事件列表可逐轮选中并修正，修改后立即重算；
 - 人工修正按 revision 锁定，后续 OCR 不会静默覆盖，过期推理结果不会显示；
 - 截图、OCR、修正、预测和终局均不写入文件；终局或退出立即清空本局内存；
 - 静态模型文件是唯一允许持久化的助手资产。
@@ -36,11 +40,11 @@ python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
 ```
 
-从 `latest-model-v6-v2.0.0-beta.1` 预发布解压五个模型文件后运行：
+从 `latest-model-v6-v2.0.0-beta.2` 预发布解压五个模型文件后运行：
 
 ```powershell
 auction-vision-assistant `
-  --models C:\path\to\latest-model-v6-v2.0.0-beta.1 `
+  --models C:\path\to\latest-model-v6-v2.0.0-beta.2 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -49,7 +53,7 @@ auction-vision-assistant `
 ```powershell
 auction-vision-assistant `
   --download-models `
-  --models .\models\latest-model-v6-v2.0.0-beta.1 `
+  --models .\models\latest-model-v6-v2.0.0-beta.2 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -57,10 +61,11 @@ auction-vision-assistant `
 大小与 SHA-256。`joblib` 只能加载本项目固定哈希的 Release 文件，不应加载
 不可信的同名替换文件。
 
-使用 v6 前，需要在界面中人工确认：当前画面属于本轮出价前、可见内容已复核、
-地图底部可见且总行数准确。低置信度或未解析事件会阻止转义；视觉身份只有人工
-确认后才作为精确身份。这个 OCR 获取路径并不等价于私有结构化输入，因此公开
-融合结果仍是 beta、未校准且固定 `actionable=false`。
+完整自动滚动和视觉状态机可以先运行 v6 + world-model-v2，但地图行数会保留为
+`automatic_scroll_estimate` 并显示警告；用户可在左侧画布和右侧事件列表快速
+复核，也可把地图行数升级为人工精确确认。低置信度或未解析事件仍会阻止转义；
+视觉身份只有人工确认后才作为精确身份。这个 OCR 获取路径并不等价于私有结构化
+输入，因此公开融合结果仍是 beta、未校准且固定 `actionable=false`。
 
 旧视觉权重 Release 仍可独立验证：
 
@@ -69,8 +74,8 @@ python scripts\verify_vision_release.py `
   --release C:\path\to\auction-assistant-vision-models-v1.0.0.zip
 ```
 
-地图滚动由用户在游戏窗口中手动完成；每次读取前在助手中填写当前视口的起始
-网格行。助手本身不控制游戏。详细隐私契约见
+助手会在每轮出价前的视觉门控时间窗内自动滚动左侧地图并恢复顶部；没有其他
+游戏控制能力。详细隐私契约见
 [`apps/ephemeral-assistant/PRIVACY.md`](apps/ephemeral-assistant/PRIVACY.md)。
 
 最新模型的脱敏、数值等价探针、验证状态与许可证边界见

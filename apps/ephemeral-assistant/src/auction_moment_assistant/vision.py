@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 
@@ -13,6 +14,7 @@ from .observations import MapObservation
 GRID_COLUMNS = 10
 CELL_PIXELS = 60
 VIEWPORT_PIXELS = 600
+MAX_STITCH_SHIFT_PIXELS = VIEWPORT_PIXELS - 80
 ROUND_GRID_CROP = (49, 110, 647, 705)
 QUALITY_TOKENS = {
     "white": "白",
@@ -33,6 +35,14 @@ class Detection:
     class_name: str
     confidence: float
     box_xyxy: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class ViewportRecognition:
+    items: tuple[MapObservation, ...]
+    offsets_pixels: tuple[int, ...]
+    estimated_rows: int
+    alignment_stable: bool
 
 
 class VisionBackend(Protocol):
@@ -173,7 +183,7 @@ class UltralyticsVisionBackend:
 
 
 def _project(
-    detection: Detection, *, offset_rows: int
+    detection: Detection, *, offset_pixels: int
 ) -> tuple[MapObservation, tuple[int, int, int, int]] | None:
     try:
         spatial, quality = decode_class(detection.class_name)
@@ -189,7 +199,7 @@ def _project(
     if x_residual > 23 or y_residual > 23:
         return None
     width = max(1, int(round(x2 / CELL_PIXELS)) - column)
-    height = max(1, int(round(y2 / CELL_PIXELS)) - local_row)
+    height = max(1, int(round((y2 - y1) / CELL_PIXELS)))
     width = min(width, GRID_COLUMNS - column)
     height = min(height, GRID_COLUMNS - local_row)
     if spatial == "top_left":
@@ -209,7 +219,7 @@ def _project(
     )
     return (
         MapObservation(
-            row=offset_rows + local_row,
+            row=int(round((int(offset_pixels) + y1) / CELL_PIXELS)),
             column=column,
             width=width_value,
             height=height_value,
@@ -219,6 +229,99 @@ def _project(
         ),
         crop_box,
     )
+
+
+def estimate_vertical_shift(
+    previous: np.ndarray, current: np.ndarray
+) -> tuple[int, str, float, int]:
+    """Estimate downward canvas movement between two normalized viewports."""
+
+    previous_gray = cv2.cvtColor(previous, cv2.COLOR_BGR2GRAY)
+    current_gray = cv2.cvtColor(current, cv2.COLOR_BGR2GRAY)
+    previous_hsv = cv2.cvtColor(previous, cv2.COLOR_BGR2HSV)
+    current_hsv = cv2.cvtColor(current, cv2.COLOR_BGR2HSV)
+    previous_edges = cv2.Canny(previous_gray, 35, 95)
+    current_edges = cv2.Canny(current_gray, 35, 95)
+    previous_mask = (
+        ((previous_hsv[:, :, 1] > 34) & (previous_hsv[:, :, 2] > 70))
+        | (previous_edges > 0)
+    ).astype(np.uint8) * 255
+    current_mask = (
+        ((current_hsv[:, :, 1] > 34) & (current_hsv[:, :, 2] > 70))
+        | (current_edges > 0)
+    ).astype(np.uint8) * 255
+    for mask in (previous_mask, current_mask):
+        mask[:7, :] = 0
+        mask[-7:, :] = 0
+        mask[:, :7] = 0
+        mask[:, -7:] = 0
+
+    orb = cv2.ORB_create(
+        nfeatures=2600, edgeThreshold=5, patchSize=17, fastThreshold=5
+    )
+    keypoints_a, descriptors_a = orb.detectAndCompute(previous_gray, previous_mask)
+    keypoints_b, descriptors_b = orb.detectAndCompute(current_gray, current_mask)
+    shifts: list[float] = []
+    orb_candidate: tuple[int, float, int] | None = None
+    if descriptors_a is not None and descriptors_b is not None:
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        for pair in matcher.knnMatch(descriptors_a, descriptors_b, k=2):
+            if len(pair) != 2:
+                continue
+            best, second = pair
+            if best.distance >= 0.76 * second.distance:
+                continue
+            point_a = keypoints_a[best.queryIdx].pt
+            point_b = keypoints_b[best.trainIdx].pt
+            dx = point_b[0] - point_a[0]
+            dy = point_a[1] - point_b[1]
+            if abs(dx) <= 2.5 and 3.0 <= dy <= MAX_STITCH_SHIFT_PIXELS:
+                shifts.append(dy)
+    if shifts:
+        mode, _count = Counter(int(round(value)) for value in shifts).most_common(1)[0]
+        cluster = [value for value in shifts if abs(value - mode) <= 2.5]
+        if len(cluster) >= 3:
+            shift = int(round(float(np.median(cluster))))
+            orb_candidate = (shift, min(1.0, len(cluster) / 12.0), len(cluster))
+
+    edge_a = cv2.GaussianBlur(previous_edges, (3, 3), 0).astype(np.float32)
+    edge_b = cv2.GaussianBlur(current_edges, (3, 3), 0).astype(np.float32)
+    scores: list[tuple[float, int]] = []
+    for shift in range(MAX_STITCH_SHIFT_PIXELS + 1):
+        left = edge_a[shift:, 8:-8]
+        right = edge_b[: VIEWPORT_PIXELS - shift, 8:-8]
+        if left.size == 0:
+            break
+        scores.append((float(np.mean(np.abs(left - right))), shift))
+    if not scores:
+        if orb_candidate is not None:
+            shift, confidence, matches = orb_candidate
+            return shift, "orb-cluster", confidence, matches
+        return 0, "unresolved", 0.0, 0
+
+    best_score, edge_shift = min(scores)
+    separated = [score for score, shift in scores if abs(shift - edge_shift) > 8]
+    runner_up = min(separated) if separated else best_score
+    edge_margin = runner_up / max(best_score, 1e-6)
+    if orb_candidate is not None:
+        orb_shift, orb_confidence, matches = orb_candidate
+        orb_score = next(score for score, shift in scores if shift == orb_shift)
+        residual_ratio = orb_score / max(best_score, 1e-6)
+        if (
+            abs(orb_shift - edge_shift) > 8
+            and residual_ratio >= 1.25
+            and edge_margin >= 1.15
+        ):
+            confidence = min(
+                1.0,
+                0.45
+                + 0.30 * min(1.0, edge_margin - 1.0)
+                + 0.25 * min(1.0, residual_ratio - 1.0),
+            )
+            return edge_shift, "edge-global-validated", confidence, 0
+        return orb_shift, "orb-cluster", orb_confidence, matches
+    confidence = min(0.8, 0.25 + 0.5 * max(0.0, edge_margin - 1.0))
+    return edge_shift, "edge-global", confidence, 0
 
 
 class VisionRecognizer:
@@ -234,13 +337,20 @@ class VisionRecognizer:
         self, frame_rgb: np.ndarray, *, offset_rows: int = 0
     ) -> tuple[MapObservation, ...]:
         viewport = normalize_map_viewport(frame_rgb)
+        return self._recognize_viewport(
+            viewport, offset_pixels=int(offset_rows) * CELL_PIXELS
+        )
+
+    def _recognize_viewport(
+        self, viewport: np.ndarray, *, offset_pixels: int
+    ) -> tuple[MapObservation, ...]:
         projected: dict[
             tuple[int, int], tuple[MapObservation, tuple[int, int, int, int]]
         ] = {}
         for detection in list(self.backend.detect_spatial(viewport)) + list(
             self.backend.detect_attributes(viewport)
         ):
-            value = _project(detection, offset_rows=int(offset_rows))
+            value = _project(detection, offset_pixels=int(offset_pixels))
             if value is None:
                 continue
             item, crop_box = value
@@ -301,4 +411,42 @@ class VisionRecognizer:
             projected[key] = (item, projected[key][1])
         return tuple(
             item for item, _box in (projected[key] for key in sorted(projected))
+        )
+
+    def recognize_viewports(
+        self, frames_rgb: Sequence[np.ndarray]
+    ) -> ViewportRecognition:
+        if not frames_rgb:
+            raise VisionError("地图扫描没有可识别视口")
+        viewports = [normalize_map_viewport(frame) for frame in frames_rgb]
+        offsets = [0]
+        alignment_stable = True
+        for previous, current in zip(viewports, viewports[1:]):
+            shift, _method, confidence, _matches = estimate_vertical_shift(
+                previous, current
+            )
+            if shift <= 0 or confidence < 0.25:
+                alignment_stable = False
+                shift = max(CELL_PIXELS, shift)
+            offsets.append(offsets[-1] + int(shift))
+
+        merged: dict[tuple[int, int], MapObservation] = {}
+        for viewport, offset in zip(viewports, offsets):
+            for item in self._recognize_viewport(
+                viewport, offset_pixels=offset
+            ):
+                previous = merged.get(item.key)
+                if previous is None or item.confidence >= previous.confidence:
+                    if previous is not None and previous.first_seen_round is not None:
+                        item.first_seen_round = previous.first_seen_round
+                    merged[item.key] = item
+        estimated_rows = max(
+            10,
+            int(round((offsets[-1] + VIEWPORT_PIXELS) / CELL_PIXELS)),
+        )
+        return ViewportRecognition(
+            items=tuple(merged[key] for key in sorted(merged)),
+            offsets_pixels=tuple(offsets),
+            estimated_rows=estimated_rows,
+            alignment_stable=alignment_stable,
         )

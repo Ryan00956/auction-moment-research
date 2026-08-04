@@ -8,6 +8,7 @@ from auction_moment_assistant.models import CatalogItem
 from auction_moment_assistant.vision import (
     Detection,
     VisionRecognizer,
+    estimate_vertical_shift,
 )
 
 
@@ -38,6 +39,17 @@ class VisionTests(unittest.TestCase):
         self.assertEqual(item.quality, "金")
         self.assertEqual(item.catalog_id, "C001")
         self.assertEqual(item.identity_candidates[0][0], "C001")
+
+    def test_estimates_vertical_overlap_without_writing_a_mosaic(self) -> None:
+        rng = np.random.default_rng(20260804)
+        mosaic = rng.integers(0, 256, (760, 600, 3), dtype=np.uint8)
+        previous = mosaic[:600]
+        current = mosaic[120:720]
+        shift, _method, confidence, _matches = estimate_vertical_shift(
+            previous, current
+        )
+        self.assertLessEqual(abs(shift - 120), 2)
+        self.assertGreaterEqual(confidence, 0.25)
 
 
 if __name__ == "__main__":
