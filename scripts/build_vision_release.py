@@ -222,10 +222,13 @@ def locate_ultralytics_license() -> Path:
 
 
 def write_json(path: Path, payload: Any) -> None:
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    # Preserve the byte format of the published v1 assets on every OS.
+    encoded = (
+        json.dumps(payload, ensure_ascii=False, indent=2)
+        .replace("\n", "\r\n")
+        + "\r\n"
+    ).encode("utf-8")
+    path.write_bytes(encoded)
 
 
 def deterministic_zip(target: Path, files: Iterable[Path], root: Path) -> None:
@@ -295,7 +298,9 @@ def build_release(args: argparse.Namespace) -> dict:
     for path in sorted(release_files, key=lambda item: item.name):
         checksum_lines.append(f"{sha256_file(path)}  {path.name}")
     checksum_path = output_root / "SHA256SUMS"
-    checksum_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+    checksum_path.write_bytes(
+        ("\r\n".join(checksum_lines) + "\r\n").encode("utf-8")
+    )
 
     archive_path = output_root.parent / f"auction-assistant-{args.release}.zip"
     deterministic_zip(

@@ -762,10 +762,14 @@ class ProbabilisticWorldModel:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(destination.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(self.artifact, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        # The published v1 artifact uses CRLF.  Write those bytes explicitly so
+        # Windows and POSIX rebuilds produce the same release SHA-256.
+        payload = (
+            json.dumps(self.artifact, ensure_ascii=False, indent=2)
+            .replace("\n", "\r\n")
+            + "\r\n"
+        ).encode("utf-8")
+        temporary.write_bytes(payload)
         temporary.replace(destination)
 
     def summary(self) -> dict:
