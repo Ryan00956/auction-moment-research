@@ -26,6 +26,10 @@ class MapObservation:
     column: int
     width: int | None = None
     height: int | None = None
+    # Detector/manual-review box geometry for anchor-only clues. These fields
+    # are presentation metadata and must never be translated into known size.
+    marker_width: int | None = None
+    marker_height: int | None = None
     quality: str | None = None
     catalog_id: str | None = None
     confidence: float = 0.0

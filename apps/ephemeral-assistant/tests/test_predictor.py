@@ -4,6 +4,8 @@ import unittest
 import tempfile
 from pathlib import Path
 
+import numpy as np
+
 from auction_moment_assistant.models import load_catalog
 from auction_moment_assistant.observations import (
     EventObservation,
@@ -84,6 +86,67 @@ class PredictorTests(unittest.TestCase):
         result = predictor.predict(ObservationStore().snapshot())
         self.assertEqual(predictor.prior_world_count, 16)
         self.assertIn("world_model_prior", result.contract)
+
+    def test_top_left_unknown_quality_still_constrains_visible_count(self) -> None:
+        mask = np.ones(len(self.predictor.world_counts), dtype=bool)
+        conditioned = self.predictor._apply_visible_items(
+            mask,
+            [
+                {
+                    "row": 0,
+                    "column": 0,
+                    "confidence": 0.95,
+                    "spatial": "top_left",
+                }
+            ],
+        )
+        np.testing.assert_array_equal(
+            conditioned, self.predictor.total_counts >= 1
+        )
+
+    def test_top_left_marker_geometry_is_not_treated_as_known_size(self) -> None:
+        base = {
+            "row": 0,
+            "column": 0,
+            "confidence": 0.95,
+            "width": 3,
+            "height": 3,
+        }
+        top_left = self.predictor._apply_visible_items(
+            np.ones(len(self.predictor.world_counts), dtype=bool),
+            [{**base, "spatial": "top_left"}],
+        )
+        outline = self.predictor._apply_visible_items(
+            np.ones(len(self.predictor.world_counts), dtype=bool),
+            [{**base, "spatial": "outline"}],
+        )
+        expected_top_left = self.predictor.total_counts >= 1
+        size_mask = self.predictor.size_masks[(3, 3)]
+        expected_outline = expected_top_left & (
+            self.predictor.world_counts[:, size_mask].sum(axis=1) >= 1
+        )
+        np.testing.assert_array_equal(top_left, expected_top_left)
+        np.testing.assert_array_equal(outline, expected_outline)
+
+    def test_thresholded_ocr_complete_identity_is_an_exact_minimum(self) -> None:
+        catalog_id = self.catalog[0].catalog_id
+        index = self.predictor.index_by_id[catalog_id]
+        conditioned = self.predictor._apply_visible_items(
+            np.ones(len(self.predictor.world_counts), dtype=bool),
+            [
+                {
+                    "row": 0,
+                    "column": 0,
+                    "confidence": 0.95,
+                    "spatial": "complete",
+                    "catalog_id": catalog_id,
+                }
+            ],
+        )
+        expected = (self.predictor.total_counts >= 1) & (
+            self.predictor.world_counts[:, index] >= 1
+        )
+        np.testing.assert_array_equal(conditioned, expected)
 
 
 if __name__ == "__main__":

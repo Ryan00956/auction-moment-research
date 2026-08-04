@@ -223,6 +223,8 @@ def _project(
             column=column,
             width=width_value,
             height=height_value,
+            marker_width=width if spatial == "top_left" else None,
+            marker_height=height if spatial == "top_left" else None,
             quality=quality,
             confidence=round(confidence, 6),
             spatial=spatial,

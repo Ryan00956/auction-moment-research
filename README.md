@@ -24,11 +24,13 @@
 - ADB 除截图外，只能执行代码中固定的地图归顶/下滚手势；不发送点击、按键、
   报价、抓包或任意坐标输入；
 - RapidOCR 识别轮次、公共/个人事件和持有金额；
-- 三份 YOLO 权重识别位置、品质、规格和完整揭示身份 Top-k；
+- 三份 YOLO 权重识别位置、品质、规格和完整揭示身份 Top-k；达到阈值的自动
+  完整身份直接采用，仍可在画布上人工改错；
 - OCR 转义层把已解析事件和显式标注来源的地图/时点证据送入最新冻结
   `v6 + world-model-v2`；自动滚动行数始终标为估算而不是精确证明；
-- 左侧地图画布可直接拖拽新增/移动、点选修改品质/规格/身份、右键删除；右侧
-  事件列表可逐轮选中并修正，修改后立即重算；
+- 左侧地图画布恢复原校对器的 13 类证据：左上角位置/完整形状分别组合
+  无品质、白、蓝、紫、金、彩，再加完整身份；标注框几何与真实尺寸分离，
+  人工完整身份必须从兼容图鉴列表明确选中；右侧事件可逐轮修正；
 - 人工修正按 revision 锁定，后续 OCR 不会静默覆盖，过期推理结果不会显示；
 - 截图、OCR、修正、预测和终局均不写入文件；终局或退出立即清空本局内存；
 - 静态模型文件是唯一允许持久化的助手资产。
@@ -40,11 +42,11 @@ python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
 ```
 
-从 `latest-model-v6-v2.0.0-beta.2` 预发布解压五个模型文件后运行：
+从 `latest-model-v6-v2.0.0-beta.3` 预发布解压五个模型文件后运行：
 
 ```powershell
 auction-vision-assistant `
-  --models C:\path\to\latest-model-v6-v2.0.0-beta.2 `
+  --models C:\path\to\latest-model-v6-v2.0.0-beta.3 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -53,7 +55,7 @@ auction-vision-assistant `
 ```powershell
 auction-vision-assistant `
   --download-models `
-  --models .\models\latest-model-v6-v2.0.0-beta.2 `
+  --models .\models\latest-model-v6-v2.0.0-beta.3 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -64,8 +66,9 @@ auction-vision-assistant `
 完整自动滚动和视觉状态机可以先运行 v6 + world-model-v2，但地图行数会保留为
 `automatic_scroll_estimate` 并显示警告；用户可在左侧画布和右侧事件列表快速
 复核，也可把地图行数升级为人工精确确认。低置信度或未解析事件仍会阻止转义；
-视觉身份只有人工确认后才作为精确身份。这个 OCR 获取路径并不等价于私有结构化
-输入，因此公开融合结果仍是 beta、未校准且固定 `actionable=false`。
+达到阈值且通过图鉴品质/尺寸一致性检查的自动完整身份直接作为 OCR 身份证据，
+人工新增完整身份则必须在兼容图鉴列表中确认。这个 OCR 获取路径并不等价于私有
+结构化输入，因此公开融合结果仍是 beta、未校准且固定 `actionable=false`。
 
 旧视觉权重 Release 仍可独立验证：
 

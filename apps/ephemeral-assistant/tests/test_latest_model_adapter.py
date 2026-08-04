@@ -83,6 +83,7 @@ class OcrDecisionAdapterTests(unittest.TestCase):
                 height=2,
                 quality="金",
                 catalog_id="C001",
+                spatial="complete",
             )
         )
         adapted = OcrDecisionAdapter(CATALOG).adapt(store.snapshot())
@@ -91,6 +92,84 @@ class OcrDecisionAdapterTests(unittest.TestCase):
         self.assertEqual(item["identity"]["known_value"], 123456)
         self.assertEqual(
             item["identity"]["match_confidence_status"], "human_confirmed"
+        )
+
+    def test_preserves_all_five_evidence_states_without_inventing_size(self) -> None:
+        store = ObservationStore()
+        store.apply_capture(
+            round_number=1,
+            events=[event(1, "public"), event(1, "personal")],
+            bankroll=999,
+            map_items=[
+                MapObservation(
+                    row=0,
+                    column=0,
+                    marker_width=3,
+                    marker_height=2,
+                    confidence=0.96,
+                    spatial="top_left",
+                ),
+                MapObservation(
+                    row=0,
+                    column=1,
+                    marker_width=2,
+                    marker_height=2,
+                    quality="金",
+                    confidence=0.96,
+                    spatial="top_left",
+                ),
+                MapObservation(
+                    row=0,
+                    column=2,
+                    width=1,
+                    height=1,
+                    confidence=0.96,
+                    spatial="outline",
+                ),
+                MapObservation(
+                    row=0,
+                    column=3,
+                    width=1,
+                    height=1,
+                    quality="金",
+                    confidence=0.96,
+                    spatial="outline",
+                ),
+                MapObservation(
+                    row=0,
+                    column=4,
+                    width=2,
+                    height=2,
+                    quality="金",
+                    catalog_id="C001",
+                    confidence=0.96,
+                    spatial="complete",
+                ),
+            ],
+        )
+        store.confirm_complete(True)
+        store.confirm_pre_bid(True)
+        store.correct_map_extent(10, True)
+
+        adapted = OcrDecisionAdapter(CATALOG).adapt(store.snapshot())
+        self.assertTrue(adapted.accepted, adapted.issues)
+        items = {
+            value["position"]["column"]: value
+            for value in adapted.decision["visible_items"]
+        }
+        self.assertIsNone(items[0]["known_size"])
+        self.assertEqual(items[0]["spatial_knowledge"], "top_left")
+        self.assertIsNone(items[0]["quality"])
+        self.assertIsNone(items[1]["known_size"])
+        self.assertEqual(items[1]["quality"], "金")
+        self.assertEqual(items[2]["known_size"], {"width": 1, "height": 1})
+        self.assertEqual(items[2]["spatial_knowledge"], "outline")
+        self.assertIsNone(items[2]["quality"])
+        self.assertEqual(items[3]["quality"], "金")
+        self.assertTrue(items[4]["identity_known"])
+        self.assertEqual(
+            items[4]["identity"]["match_confidence_status"],
+            "ocr_thresholded",
         )
 
     def test_blocks_missing_proofs_and_low_confidence_event(self) -> None:

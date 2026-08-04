@@ -151,11 +151,15 @@ class OcrDecisionAdapter:
                 continue
             width = int(raw.get("width") or 0)
             height = int(raw.get("height") or 0)
+            spatial = str(raw.get("spatial") or "top_left")
+            if spatial not in {"top_left", "outline", "complete"}:
+                issues.append(f"invalid_map_spatial:{row}:{column}")
+                continue
             if (width > 0) != (height > 0):
                 issues.append(f"invalid_map_size:{row}:{column}")
                 continue
             known_size = None
-            if width > 0 and height > 0:
+            if spatial in {"outline", "complete"} and width > 0 and height > 0:
                 if width > 3 or height > 3:
                     issues.append(f"invalid_map_size:{row}:{column}")
                     continue
@@ -178,7 +182,12 @@ class OcrDecisionAdapter:
 
             catalog_id = str(raw.get("catalog_id") or "")
             catalog_item = self.catalog.get(catalog_id)
-            identity_known = bool(human_locked and catalog_item is not None)
+            # A detector "complete" class includes identity classification.
+            # Thresholded OCR is accepted by default; manual promotion still
+            # requires the UI to attach an explicit catalog id.
+            identity_known = bool(
+                spatial == "complete" and catalog_item is not None
+            )
             quality = str(raw.get("quality") or "") or None
             if quality not in {None, "白", "蓝", "紫", "金", "彩"}:
                 issues.append(f"invalid_map_quality:{row}:{column}")
@@ -222,7 +231,13 @@ class OcrDecisionAdapter:
                     if human_locked and quality
                     else "ocr_thresholded"
                 ),
-                "spatial_knowledge": str(raw.get("spatial") or "unknown"),
+                "spatial_knowledge": (
+                    "complete"
+                    if identity_known
+                    else "outline"
+                    if spatial in {"outline", "complete"}
+                    else "top_left"
+                ),
                 "evidence_confidence": 1.0 if human_locked else confidence,
                 "quality_confidence": 1.0 if human_locked else confidence,
                 "identity_known": identity_known,
@@ -230,7 +245,11 @@ class OcrDecisionAdapter:
                     {
                         "catalog_id": catalog_id,
                         "known_value": int(catalog_item.value),
-                        "match_confidence_status": "human_confirmed",
+                        "match_confidence_status": (
+                            "human_confirmed"
+                            if human_locked
+                            else "ocr_thresholded"
+                        ),
                     }
                     if identity_known
                     else {}

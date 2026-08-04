@@ -267,13 +267,18 @@ class EmpiricalWorldPredictor:
         quality_minimum: Counter[str] = Counter()
         size_minimum: Counter[tuple[int, int]] = Counter()
         joint_minimum: Counter[tuple[str, int, int]] = Counter()
+        minimum_visible_item_count = 0
         for item in items:
             human_locked = bool(item.get("human_locked"))
             confidence = float(item.get("confidence") or 0.0)
             if not human_locked and confidence < 0.85:
                 continue
+            minimum_visible_item_count += 1
+            spatial = str(item.get("spatial") or "top_left")
             catalog_id = (
-                str(item.get("catalog_id") or "") if human_locked else ""
+                str(item.get("catalog_id") or "")
+                if spatial == "complete"
+                else ""
             )
             quality = str(item.get("quality") or "")
             width = int(item.get("width") or 0)
@@ -282,10 +287,16 @@ class EmpiricalWorldPredictor:
                 identity_minimum[catalog_id] += 1
             if quality:
                 quality_minimum[quality] += 1
-            if width and height:
+            if spatial in {"outline", "complete"} and width and height:
                 size_minimum[(width, height)] += 1
-            if quality and width and height:
+            if (
+                spatial in {"outline", "complete"}
+                and quality
+                and width
+                and height
+            ):
                 joint_minimum[(quality, width, height)] += 1
+        mask &= self.total_counts >= minimum_visible_item_count
         for catalog_id, minimum in identity_minimum.items():
             index = self.index_by_id.get(catalog_id)
             if index is None:
