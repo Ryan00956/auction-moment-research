@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(
             os.environ.get(
                 "AUCTION_ASSISTANT_MODELS",
-                "models/latest-model-v6-v2.0.0-beta.4",
+                "models/latest-model-v6-v2.0.0-beta.5",
             )
         ),
     )

@@ -12,4 +12,8 @@ to the repository version used.
 
 This grant does not cover third-party trademarks, game names, software,
 artwork, screenshots, network captures, or other third-party material. Those
-materials are intentionally not included in this repository.
+materials are not covered by this license. The 80x80 interoperability
+thumbnails under
+`apps/ephemeral-assistant/src/auction_moment_assistant/catalog_previews/` are
+included solely to make manual OCR correction usable; rights in the depicted
+game artwork remain with their respective owners.

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
+from datetime import datetime
+import json
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, scrolledtext, ttk
+import traceback
 
 from .map_editor import MapEditor
 from .models import CatalogItem
@@ -32,13 +35,15 @@ class AssistantWindow:
         self.catalog = catalog
         self.monitor = EphemeralStateMonitor(pipeline, store)
         self._prediction_future: Future | None = None
+        self._log_entry_count = 0
 
         self.root = tk.Tk()
         self.root.title("Auction Moment · 半自动 OCR 预测助手")
-        self.root.geometry("1320x860")
-        self.root.minsize(1100, 720)
+        self.root.geometry("1440x940")
+        self.root.minsize(1180, 780)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self._build()
+        self.root.after_idle(self._set_initial_sashes)
         self.refresh()
         self.monitor.start()
         self.root.after(100, self._poll_monitor)
@@ -81,9 +86,13 @@ class AssistantWindow:
         ).pack(fill=tk.X)
 
         body = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
+        self.main_pane = body
         body.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         left = ttk.LabelFrame(body, text="地图建模与快速纠错", padding=8)
         right = ttk.Frame(body)
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=2)
+        right.rowconfigure(1, weight=5)
         body.add(left, weight=3)
         body.add(right, weight=2)
         self.map_editor = MapEditor(
@@ -92,10 +101,10 @@ class AssistantWindow:
         self.map_editor.pack(fill=tk.BOTH, expand=True)
 
         event_box = ttk.LabelFrame(right, text="事件列表与人工修正", padding=8)
-        event_box.pack(fill=tk.BOTH, expand=True)
+        event_box.grid(row=0, column=0, sticky=tk.NSEW)
         columns = ("round", "kind", "text", "confidence", "source")
         self.event_tree = ttk.Treeview(
-            event_box, columns=columns, show="headings", height=9
+            event_box, columns=columns, show="headings", height=7
         )
         for name, label, width in (
             ("round", "轮", 36),
@@ -123,7 +132,10 @@ class AssistantWindow:
             side=tk.RIGHT
         )
 
-        evidence_box = ttk.LabelFrame(right, text="本轮证据", padding=8)
+        lower = ttk.Frame(right)
+        lower.grid(row=1, column=0, sticky=tk.NSEW, pady=(8, 0))
+
+        evidence_box = ttk.LabelFrame(lower, text="本轮证据", padding=8)
         evidence_box.pack(fill=tk.X, pady=(8, 0))
         self.bankroll_var = tk.StringVar()
         self.map_rows_var = tk.StringVar()
@@ -159,7 +171,7 @@ class AssistantWindow:
         evidence_box.columnconfigure(1, weight=1)
 
         prediction_box = ttk.LabelFrame(
-            right,
+            lower,
             text="v6 + world-model-v2 估值与建议出价（仅人工参考）",
             padding=8,
         )
@@ -172,12 +184,182 @@ class AssistantWindow:
             wraplength=470,
         ).pack(fill=tk.X)
 
+        log_box = ttk.LabelFrame(
+            lower,
+            text="运行与诊断日志（仅内存，不写文件）",
+            padding=8,
+        )
+        log_box.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        log_actions = ttk.Frame(log_box)
+        log_actions.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(
+            log_actions,
+            text="可滚动、选择并 Ctrl+C；异常会保留完整堆栈",
+            foreground="#64748b",
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            log_actions, text="复制全部", command=self.copy_all_logs
+        ).pack(side=tk.RIGHT)
+        ttk.Button(
+            log_actions, text="清空显示", command=self.clear_logs
+        ).pack(side=tk.RIGHT, padx=(0, 5))
+        self.log_text = scrolledtext.ScrolledText(
+            log_box,
+            height=14,
+            wrap=tk.WORD,
+            font=("Cascadia Mono", 9),
+            undo=False,
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text.configure(state=tk.DISABLED)
+        self.log_menu = tk.Menu(self.root, tearoff=False)
+        self.log_menu.add_command(label="复制选中", command=self.copy_selected_log)
+        self.log_menu.add_command(label="复制全部", command=self.copy_all_logs)
+        self.log_menu.add_separator()
+        self.log_menu.add_command(label="全选", command=self.select_all_logs)
+        self.log_text.bind("<Button-3>", self._show_log_menu)
+        self._append_log("startup", "界面已启动；日志只保留在本进程内存中")
+
+    def _set_initial_sashes(self) -> None:
+        self.root.update_idletasks()
+        try:
+            self.main_pane.sashpos(0, int(self.root.winfo_width() * 0.62))
+        except tk.TclError:
+            return
+
+    def _append_log(
+        self,
+        category: str,
+        message: str,
+        details: tuple[str, ...] | list[str] = (),
+    ) -> None:
+        self._log_entry_count += 1
+        stamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        lines = [
+            f"[{stamp}] #{self._log_entry_count:04d} [{category}] {message}"
+        ]
+        for detail in details:
+            cleaned = str(detail).rstrip()
+            if cleaned:
+                lines.extend(f"    {line}" for line in cleaned.splitlines())
+        block = "\n".join(lines) + "\n"
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.insert(tk.END, block)
+        self.log_text.configure(state=tk.DISABLED)
+        self.log_text.see(tk.END)
+
+    @staticmethod
+    def _scan_log_details(scan) -> tuple[str, ...]:
+        details = [
+            (
+                f"revision={scan.revision} success={scan.success} "
+                f"round={scan.round_number} viewports={scan.viewport_count} "
+                f"map_items={scan.map_item_count} "
+                f"estimated_rows={scan.estimated_rows} "
+                f"alignment_stable={scan.alignment_stable}"
+            )
+        ]
+        if scan.ocr is not None:
+            details.append(
+                (
+                    f"ocr.round={scan.ocr.round_number} "
+                    f"round_verified={scan.ocr.round_verified} "
+                    f"bankroll={scan.ocr.bankroll} "
+                    f"timing_ms={scan.ocr.timing_ms:.2f}"
+                )
+            )
+            for event in scan.ocr.events:
+                details.append(
+                    (
+                        f"ocr.event R{event.round_number} {event.kind} "
+                        f"confidence={event.confidence:.4f} "
+                        f"source={event.source} text={event.text!r} "
+                        "semantics="
+                        + json.dumps(
+                            event.semantics,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                    )
+                )
+        if scan.errors:
+            details.append("scan.errors=" + " | ".join(scan.errors))
+        return tuple(details)
+
+    def _show_log_menu(self, event) -> None:
+        try:
+            self.log_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.log_menu.grab_release()
+
+    def copy_selected_log(self) -> None:
+        try:
+            content = self.log_text.get(tk.SEL_FIRST, tk.SEL_LAST)
+        except tk.TclError:
+            self.status_var.set("日志区尚未选择文字")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.status_var.set("已复制选中的日志")
+
+    def copy_all_logs(self) -> None:
+        content = self.log_text.get("1.0", "end-1c")
+        if not content:
+            self.status_var.set("当前没有可复制的日志")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.status_var.set("已复制全部内存日志")
+
+    def select_all_logs(self) -> None:
+        self.log_text.tag_add(tk.SEL, "1.0", "end-1c")
+        self.log_text.mark_set(tk.INSERT, "1.0")
+        self.log_text.see("1.0")
+        self.log_text.focus_set()
+
+    def clear_logs(self) -> None:
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.configure(state=tk.DISABLED)
+        self._log_entry_count = 0
+        self._append_log("log", "日志显示已由用户手动清空")
+
     def _changed(self) -> None:
+        snapshot = self.store.snapshot()
+        self._append_log(
+            "evidence",
+            (
+                f"证据已更新 revision={snapshot.revision} "
+                f"round={snapshot.round_number} events={len(snapshot.events)} "
+                f"map_items={len(snapshot.map_items)}"
+            ),
+        )
         self.refresh()
         self.request_prediction()
 
     def _poll_monitor(self) -> None:
         for update in self.monitor.drain():
+            details = list(update.details)
+            if update.scan is not None:
+                details = [*self._scan_log_details(update.scan), *details]
+                snapshot = self.store.snapshot()
+                details.extend(
+                    (
+                        "snapshot.events="
+                        + json.dumps(
+                            snapshot.events,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                        "snapshot.map_items="
+                        + json.dumps(
+                            snapshot.map_items,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    )
+                )
+            self._append_log(update.kind, update.message, details)
             self.round_var.set(update.round_number)
             self.status_var.set(update.message)
             if update.kind in {
@@ -200,14 +382,17 @@ class AssistantWindow:
         self.monitor.set_paused(paused)
         self.pause_button.configure(text="继续监视" if paused else "暂停监视")
         self.status_var.set("监视已暂停" if paused else "监视已恢复")
+        self._append_log("control", "监视已暂停" if paused else "监视已恢复")
 
     def request_scan(self) -> None:
         self.monitor.request_scan(self.round_var.get())
         self.status_var.set("已请求内存重扫；仅会滚动左侧地图")
+        self._append_log("control", f"请求手动重扫 R{self.round_var.get()}")
 
     def apply_round(self) -> None:
         self.monitor.set_round(self.round_var.get())
         self.status_var.set(f"已人工修正为第 {self.round_var.get()} 轮")
+        self._append_log("human", f"人工修正轮次为 R{self.round_var.get()}")
         self.refresh()
 
     def _select_event(self, _event=None) -> None:
@@ -232,6 +417,11 @@ class AssistantWindow:
         self.store.correct_event(
             int(round_text), kind, text, event_semantics(text)
         )
+        self._append_log(
+            "human",
+            f"人工修正 R{round_text} {kind}事件",
+            (f"text={text!r}",),
+        )
         self._changed()
 
     def apply_bankroll(self) -> None:
@@ -242,6 +432,7 @@ class AssistantWindow:
             messagebox.showerror("金额无效", "持有金额必须是整数")
             return
         self.store.correct_bankroll(value)
+        self._append_log("human", f"人工修正持有金额为 {value}")
         self._changed()
 
     def apply_map_extent(self) -> None:
@@ -252,10 +443,20 @@ class AssistantWindow:
         except ValueError as exc:
             messagebox.showerror("地图行数无效", str(exc))
             return
+        self._append_log(
+            "human",
+            (
+                f"人工修正地图行数为 {rows}；"
+                f"到底部确认={bool(self.map_exact_var.get())}"
+            ),
+        )
         self._changed()
 
     def request_prediction(self) -> None:
         self._prediction_future = self.inference.submit(self.store)
+        self._append_log(
+            "prediction", f"提交 revision={self.store.revision} 的估值任务"
+        )
         self.root.after(35, self._poll_prediction)
 
     def _poll_prediction(self) -> None:
@@ -267,11 +468,38 @@ class AssistantWindow:
             result: PredictionResult = future.result()
         except Exception as exc:
             self.prediction_var.set(f"预测失败：{exc}")
+            self._append_log(
+                "prediction-error",
+                f"预测失败：{type(exc).__name__}: {exc}",
+                (traceback.format_exc(),),
+            )
             return
         if not self.inference.current(self.store, result):
+            self._append_log(
+                "prediction-stale",
+                (
+                    f"丢弃旧结果 revision={result.revision}；"
+                    f"当前 revision={self.store.revision}"
+                ),
+            )
             self.request_prediction()
             return
         self.prediction_var.set(format_prediction(result))
+        self._append_log(
+            "prediction-result",
+            (
+                f"revision={result.revision} status={result.status} "
+                f"compatible_worlds={result.compatible_worlds} "
+                f"source={result.estimate_source}"
+            ),
+            (
+                f"contract={result.contract}",
+                f"p10={result.p10} p50={result.p50} p90={result.p90}",
+                "issues=" + json.dumps(result.issues, ensure_ascii=False),
+                "diagnostics="
+                + json.dumps(result.diagnostics, ensure_ascii=False),
+            ),
+        )
 
     def refresh(self) -> None:
         snapshot = self.store.snapshot()
@@ -320,6 +548,9 @@ class AssistantWindow:
         self.monitor.set_round(1)
         self.prediction_var.set("等待每轮自动扫描")
         self.status_var.set("本局临时状态已从内存清空，继续监视大厅")
+        self._append_log(
+            "human", "清空本局临时证据；运行日志按要求继续保留"
+        )
         self.refresh()
 
     def close(self) -> None:

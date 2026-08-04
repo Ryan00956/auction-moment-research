@@ -457,7 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-bundle", type=Path, required=True)
     parser.add_argument("--treasures", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--release", default="latest-model-v6-v2.0.0-beta.4")
+    parser.add_argument("--release", default="latest-model-v6-v2.0.0-beta.5")
     parser.add_argument(
         "--model-card",
         type=Path,

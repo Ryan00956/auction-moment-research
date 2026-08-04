@@ -12,6 +12,7 @@ written to disk or transmitted over a network:
 - visual detections and identity Top-k candidates;
 - manual corrections and undo/revision state;
 - compatible-world predictions;
+- the scrollable diagnostic log, including OCR/map snapshots and tracebacks;
 - final-result frames or settlement values.
 
 The assistant overwrites the frame buffer it owns before releasing it. Third-
@@ -21,14 +22,17 @@ and crash dumps are outside this application-level guarantee.
 ## Persistent static assets
 
 The executable environment, public text dataset, and versioned model files are
-normal static inputs and may be stored locally. The optional downloader writes
+normal static inputs and may be stored locally. The public package also includes
+120 deliberately published 80x80 treasure-catalog thumbnails for manual identity
+selection; these are static application assets, not captured session frames.
+The optional downloader writes
 only files declared in `model-release.json`, verifies their byte counts and
 SHA-256 values, and never uploads data.
 
 The latest v6 joblib and world-model-v2 are static assets. The release builder
 replaces raw session identifiers and private paths and verifies numeric
 equivalence before publication. Packet parsers, protocol codebooks, automatic
-bidding logic, screenshots, and settlement records are not included.
+bidding logic, per-session screenshots, and settlement records are not included.
 
 ## Device access
 

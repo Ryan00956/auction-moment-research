@@ -177,6 +177,67 @@ class PredictorTests(unittest.TestCase):
             result.diagnostics,
         )
 
+    def test_reseeds_when_only_the_finite_particle_population_collapses(self) -> None:
+        predictor = EmpiricalWorldPredictor(
+            TREASURES,
+            self.catalog,
+            conditional_resample_max_draws=4,
+            conditional_resample_target=2,
+            conditional_resample_batch_size=2,
+        )
+
+        class CompatibleModel:
+            def __init__(self, size: int) -> None:
+                self.size = size
+                self.calls = 0
+
+            def sample_prior_counts(self, _rng):
+                self.calls += 1
+                counts = [0] * self.size
+                counts[0] = 999
+                return tuple(counts)
+
+        model = CompatibleModel(len(self.catalog))
+        predictor._world_model = model
+        store = ObservationStore()
+        store.apply_capture(
+            round_number=1,
+            events=[
+                EventObservation(
+                    1,
+                    "public",
+                    "显示本局藏品总数量999",
+                    1.0,
+                    {
+                        "parsed": True,
+                        "effect": "total_item_count",
+                        "observed_count": 999,
+                    },
+                    source="human",
+                    human_locked=True,
+                )
+            ],
+            bankroll=None,
+            map_items=[],
+        )
+        result = predictor.predict(store.snapshot())
+        self.assertEqual(result.status, "provisional_conditioned_resample")
+        self.assertEqual(result.compatible_worlds, 2)
+        self.assertIsNotNone(result.p50)
+        self.assertIn("conditioned_resample_provisional", result.issues)
+        self.assertIn("conditioned_resample:2:2", result.diagnostics)
+        self.assertTrue(
+            any(
+                value.startswith(
+                    "particle_collapse:event_conflict:R1:public:total_item_count:999"
+                )
+                for value in result.diagnostics
+            )
+        )
+
+        predictor.predict(store.snapshot())
+        self.assertEqual(model.calls, 2)
+
     def test_reports_visible_count_constraint_that_eliminates_worlds(self) -> None:
         maximum = int(self.predictor.total_counts.max())
         diagnostics: list[str] = []

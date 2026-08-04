@@ -27,6 +27,15 @@ RAW_SESSION_ID = re.compile(r"\b\d{8}T\d{6}\b")
 ABSOLUTE_WINDOWS_PATH = re.compile(r"(?:[A-Za-z]:\\|\\\\\?\\)")
 EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PUBLIC_ARTIFACT_ROOTS = ("data", "reports", "results")
+CATALOG_PREVIEW_ROOT = (
+    REPOSITORY_ROOT
+    / "apps"
+    / "ephemeral-assistant"
+    / "src"
+    / "auction_moment_assistant"
+    / "catalog_previews"
+)
+CATALOG_PREVIEW_NAME = re.compile(r"C\d{3}\.png")
 IGNORED_SCAN_DIRECTORIES = {
     ".git",
     ".venv",
@@ -85,10 +94,40 @@ def verify_repository_files(errors: list[str]) -> None:
             part in IGNORED_SCAN_DIRECTORIES for part in path.parts
         ):
             continue
-        if path.suffix.lower() in FORBIDDEN_EXTENSIONS:
+        allowed_catalog_preview = (
+            path.parent == CATALOG_PREVIEW_ROOT
+            and CATALOG_PREVIEW_NAME.fullmatch(path.name) is not None
+        )
+        if path.suffix.lower() in FORBIDDEN_EXTENSIONS and not allowed_catalog_preview:
             errors.append(f"forbidden extension: {path.relative_to(REPOSITORY_ROOT)}")
         if path.stat().st_size > 50 * 1024 * 1024:
             errors.append(f"file exceeds 50 MiB: {path.relative_to(REPOSITORY_ROOT)}")
+
+
+def verify_catalog_previews(errors: list[str]) -> None:
+    metadata_path = CATALOG_PREVIEW_ROOT.parent / "catalog-metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    expected = {f"{catalog_id}.png" for catalog_id in metadata.get("names") or {}}
+    observed = {path.name for path in CATALOG_PREVIEW_ROOT.glob("*.png")}
+    if len(expected) != 120:
+        errors.append(f"catalog metadata expected 120 names, found {len(expected)}")
+    missing = sorted(expected - observed)
+    extra = sorted(observed - expected)
+    if missing:
+        errors.append(f"catalog previews missing: {missing}")
+    if extra:
+        errors.append(f"catalog previews unexpected: {extra}")
+    for path in CATALOG_PREVIEW_ROOT.glob("*.png"):
+        header = path.read_bytes()[:24]
+        if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n":
+            errors.append(f"invalid catalog preview PNG: {path.name}")
+            continue
+        width = int.from_bytes(header[16:20], "big")
+        height = int.from_bytes(header[20:24], "big")
+        if (width, height) != (80, 80):
+            errors.append(
+                f"catalog preview must be 80x80: {path.name} is {width}x{height}"
+            )
 
 
 def verify_assistant_privacy_boundary(errors: list[str]) -> None:
@@ -149,6 +188,7 @@ def verify_public_artifacts(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     verify_repository_files(errors)
+    verify_catalog_previews(errors)
     verify_data_manifest(errors)
     verify_result_manifests(errors)
     verify_public_artifacts(errors)

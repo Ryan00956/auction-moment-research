@@ -17,6 +17,7 @@ ISSUE_LABELS = {
     "missing_event": "存在尚未识别的轮次事件",
     "map_completeness_not_confirmed": "地图完整性尚未确认",
     "compatible_worlds_below_10": "兼容世界少于 10 个",
+    "conditioned_resample_provisional": "v2 已按当前条件重新生成候选世界，结果仍属未校准估计",
 }
 
 EFFECT_LABELS = {
@@ -57,7 +58,17 @@ def describe_issue(value: str) -> str:
 
 def describe_diagnostic(value: str) -> str:
     diagnostic = str(value)
+    if diagnostic.startswith("particle_collapse:"):
+        detail = describe_diagnostic(diagnostic.removeprefix("particle_collapse:"))
+        return f"初始有限世界样本耗尽（不代表条件不可能）：{detail}"
     parts = diagnostic.split(":")
+    if parts[:1] == ["conditioned_resample"] and len(parts) == 3:
+        return (
+            f"已额外生成 {int(parts[1]):,} 个候选世界，"
+            f"找到 {int(parts[2]):,} 个兼容世界"
+        )
+    if parts[:1] == ["conditioned_resample_exhausted"] and len(parts) == 2:
+        return f"额外生成 {int(parts[1]):,} 个候选世界后仍无兼容结果"
     if len(parts) in {4, 5} and parts[0] == "event_conflict":
         _, round_number, kind, effect = parts[:4]
         kind_label = "公共" if kind == "public" else "个人"

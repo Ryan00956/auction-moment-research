@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from importlib import resources
 from typing import Mapping
 import tkinter as tk
 from tkinter import messagebox, ttk
+
+from PIL import Image, ImageTk
 
 from .models import CatalogItem
 from .observations import MapObservation, ObservationStore
 
 
-CELL = 48
+CELL = 40
 QUALITY_CHOICES = (
     ("", "无品质"),
     ("白", "白"),
@@ -47,10 +50,15 @@ def evidence_state(item: MapObservation | Mapping) -> str:
     return "top_left"
 
 
-def evidence_label(item: MapObservation | Mapping) -> str:
+def evidence_label(
+    item: MapObservation | Mapping,
+    catalog: Mapping[str, CatalogItem] | None = None,
+) -> str:
     state = evidence_state(item)
     if state == "identity_known":
-        return f"身份·{_field(item, 'catalog_id', '')}"
+        catalog_id = str(_field(item, "catalog_id", "") or "")
+        catalog_item = catalog.get(catalog_id) if catalog is not None else None
+        return f"身份·{catalog_item.label if catalog_item else catalog_id}"
     quality = str(_field(item, "quality", "") or "")
     quality_label = quality or "无品质"
     prefix = "左上" if state == "top_left" else "形状"
@@ -114,6 +122,7 @@ class MapEditor(ttk.Frame):
         self._drag_moved = False
         self._draft_id: int | None = None
         self._identity_catalog_ids: list[str] = []
+        self._identity_preview_photo = None
 
         toolbar = ttk.Frame(self)
         toolbar.pack(fill=tk.X, pady=(0, 6))
@@ -132,21 +141,23 @@ class MapEditor(ttk.Frame):
             variable=self.spatial_var,
         ).pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(toolbar, text="品质").pack(side=tk.LEFT, padx=(14, 3))
+        attributes = ttk.Frame(self)
+        attributes.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(attributes, text="品质").pack(side=tk.LEFT, padx=(0, 3))
         self.quality_var = tk.StringVar(value="")
         for value, label in QUALITY_CHOICES:
             ttk.Radiobutton(
-                toolbar,
+                attributes,
                 text=label,
                 value=value,
                 variable=self.quality_var,
                 command=self._refresh_identity_choices,
             ).pack(side=tk.LEFT, padx=1)
 
-        ttk.Label(toolbar, text="规格").pack(side=tk.LEFT, padx=(12, 3))
+        ttk.Label(attributes, text="规格").pack(side=tk.LEFT, padx=(12, 3))
         self.size_var = tk.StringVar(value="1x1")
         self.size_combo = ttk.Combobox(
-            toolbar,
+            attributes,
             textvariable=self.size_var,
             values=tuple(f"{w}x{h}" for w in range(1, 4) for h in range(1, 4)),
             width=5,
@@ -154,9 +165,9 @@ class MapEditor(ttk.Frame):
         )
         self.size_combo.pack(side=tk.LEFT)
         self.size_combo.bind("<<ComboboxSelected>>", self._refresh_identity_choices)
-        ttk.Button(toolbar, text="应用到选中框", command=self.apply_selected).pack(
-            side=tk.LEFT, padx=8
-        )
+        ttk.Button(
+            attributes, text="应用到选中框", command=self.apply_selected
+        ).pack(side=tk.LEFT, padx=8)
 
         help_row = ttk.Frame(self)
         help_row.pack(fill=tk.X, pady=(0, 6))
@@ -207,7 +218,24 @@ class MapEditor(ttk.Frame):
         identity_panel = ttk.LabelFrame(
             body, text="完整身份（人工标注须明确确认）", padding=8
         )
-        body.add(identity_panel, weight=1)
+        body.add(identity_panel, weight=2)
+        preview = ttk.Frame(identity_panel)
+        preview.pack(fill=tk.X, pady=(0, 7))
+        self.identity_preview = ttk.Label(
+            preview,
+            text="在下方选择宝藏以预览",
+            anchor=tk.CENTER,
+            width=18,
+        )
+        self.identity_preview.pack(anchor=tk.CENTER)
+        self.identity_preview_text = tk.StringVar(value="尚未选择宝藏")
+        ttk.Label(
+            preview,
+            textvariable=self.identity_preview_text,
+            anchor=tk.CENTER,
+            justify=tk.CENTER,
+            foreground="#334155",
+        ).pack(fill=tk.X, pady=(4, 0))
         self.identity_search_var = tk.StringVar()
         search = ttk.Entry(identity_panel, textvariable=self.identity_search_var)
         search.pack(fill=tk.X)
@@ -225,7 +253,7 @@ class MapEditor(ttk.Frame):
         list_frame = ttk.Frame(identity_panel)
         list_frame.pack(fill=tk.BOTH, expand=True)
         self.identity_list = tk.Listbox(
-            list_frame, exportselection=False, activestyle="dotbox", width=31
+            list_frame, exportselection=False, activestyle="dotbox", width=27
         )
         identity_scroll = ttk.Scrollbar(
             list_frame, orient=tk.VERTICAL, command=self.identity_list.yview
@@ -235,6 +263,7 @@ class MapEditor(ttk.Frame):
         identity_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.identity_list.bind("<Double-Button-1>", self.confirm_identity)
         self.identity_list.bind("<Return>", self.confirm_identity)
+        self.identity_list.bind("<<ListboxSelect>>", self._update_identity_preview)
 
         self.identity_status = tk.StringVar(value="先在地图上选择一个框")
         ttk.Label(
@@ -294,14 +323,15 @@ class MapEditor(ttk.Frame):
                 if known_size and (item.width, item.height) != known_size:
                     continue
             haystack = (
-                f"{item.catalog_id} {item.name} {item.quality} {item.size}"
+                f"{item.catalog_id} {item.name} {item.label} "
+                f"{item.quality} {item.size}"
             ).casefold()
             if search and search not in haystack:
                 continue
             matches.append(item)
         matches.sort(
             key=lambda item: (
-                candidate_rank.get(item.catalog_id, 10_000), item.catalog_id
+                candidate_rank.get(item.catalog_id, 10_000), item.label
             )
         )
 
@@ -312,7 +342,10 @@ class MapEditor(ttk.Frame):
             candidate = "OCR候选 · " if item.catalog_id in candidate_rank else ""
             self.identity_list.insert(
                 tk.END,
-                f"{candidate}{item.catalog_id} · {item.quality} · {item.size}",
+                (
+                    f"{candidate}{item.label} · {item.quality} · "
+                    f"{item.size} · {item.value:,}"
+                ),
             )
             self._identity_catalog_ids.append(item.catalog_id)
             if current is not None and current.catalog_id == item.catalog_id:
@@ -320,13 +353,43 @@ class MapEditor(ttk.Frame):
         if selected_index is not None:
             self.identity_list.selection_set(selected_index)
             self.identity_list.see(selected_index)
+        elif matches:
+            self.identity_list.selection_set(0)
         if current is None:
             self.identity_status.set("先在地图上选择一个框")
         else:
-            state = evidence_label(current)
+            state = evidence_label(current, self.catalog)
             self.identity_status.set(
                 f"当前：{state}；可选 {len(matches)} 个兼容图鉴项"
             )
+        self._update_identity_preview()
+
+    def _update_identity_preview(self, _event=None) -> None:
+        item = self._selected_catalog_item()
+        if item is None:
+            self._identity_preview_photo = None
+            self.identity_preview.configure(
+                image="", text="没有兼容的宝藏可供预览"
+            )
+            self.identity_preview_text.set("尚未选择宝藏")
+            return
+        try:
+            resource = resources.files(__package__).joinpath(
+                "catalog_previews", f"{item.catalog_id}.png"
+            )
+            with resource.open("rb") as handle:
+                image = Image.open(handle).convert("RGBA")
+                image.thumbnail((128, 128), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+        except Exception:
+            self._identity_preview_photo = None
+            self.identity_preview.configure(image="", text="预览图暂不可用")
+        else:
+            self._identity_preview_photo = photo
+            self.identity_preview.configure(image=photo, text="")
+        self.identity_preview_text.set(
+            f"{item.label}\n{item.quality} · {item.size} · {item.value:,}"
+        )
 
     def _grid_position(self, event) -> tuple[int, int]:
         self.canvas.focus_set()
@@ -358,7 +421,10 @@ class MapEditor(ttk.Frame):
             width, height = display_geometry(item)
             self.size_var.set(f"{width}x{height}")
             self.selection_status.set(
-                f"已选 R{item.row} C{item.column} · {evidence_label(item)}"
+                (
+                    f"已选 R{item.row} C{item.column} · "
+                    f"{evidence_label(item, self.catalog)}"
+                )
             )
         self._refresh_identity_choices()
         self.refresh()
@@ -588,7 +654,7 @@ class MapEditor(ttk.Frame):
             text_id = self.canvas.create_text(
                 column * CELL + 7,
                 row * CELL + 7,
-                text=f"{evidence_label(raw)} · {source}",
+                text=f"{evidence_label(raw, self.catalog)} · {source}",
                 anchor=tk.NW,
                 fill="#0f172a" if color == "#ffffff" else "#ffffff",
                 font=("Microsoft YaHei UI", 9, "bold"),

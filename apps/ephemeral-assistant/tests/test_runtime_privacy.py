@@ -47,6 +47,11 @@ class FakeVision:
         return (MapObservation(row=offset_rows, column=0, confidence=0.9),)
 
 
+class FailingOCR:
+    def recognize(self, image, *, expected_round):
+        raise RuntimeError(f"diagnostic failure at R{expected_round}")
+
+
 class FakeScrollSource:
     def __init__(self, frames):
         self.frames = list(frames)
@@ -115,6 +120,20 @@ class RuntimePrivacyTests(unittest.TestCase):
         self.assertTrue(outcome.final_detected)
         self.assertIsNone(store.snapshot().bankroll)
         self.assertIsNone(store.frame_copy())
+
+    def test_capture_error_keeps_full_in_memory_traceback(self) -> None:
+        frame = np.full((720, 1280, 3), 128, dtype=np.uint8)
+        pipeline = CapturePipeline(
+            source=StaticFrameSource(frame),
+            store=ObservationStore(),
+            ocr=FailingOCR(),
+            vision=None,
+        )
+        outcome = pipeline.capture_once(expected_round=3, offset_rows=0)
+        self.assertIn("OCR: diagnostic failure at R3", outcome.errors)
+        self.assertTrue(outcome.debug)
+        self.assertIn("Traceback (most recent call last)", outcome.debug[0])
+        self.assertIn("RuntimeError: diagnostic failure at R3", outcome.debug[0])
 
     def test_round_scan_only_uses_map_swipes_and_creates_no_files(self) -> None:
         first = np.full((720, 1280, 3), 80, dtype=np.uint8)

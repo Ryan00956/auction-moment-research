@@ -29,11 +29,14 @@
 - OCR 转义层把已解析事件和显式标注来源的地图/时点证据送入最新冻结
   `v6 + world-model-v2`；自动滚动行数始终标为估算而不是精确证明；
 - 每轮显示 P10/P50/P90，并以 `P10 × 0.90` 给出仅供人工参考的建议最高出价；
-  v2 条件冲突时保留 v6 保守回退并指出导致世界归零的事件或地图条件；
+  初始有限世界集合归零时先按全部条件额外生成最多 32,768 个世界，仍无结果才
+  保留 v6 保守回退并指出导致粒子耗尽的事件或地图条件；
 - 左侧地图画布恢复原校对器的 13 类证据：左上角位置/完整形状分别组合
   无品质、白、蓝、紫、金、彩，再加完整身份；标注框几何与真实尺寸分离，
   人工完整身份必须从兼容图鉴列表明确选中；右侧事件可逐轮修正；
 - 人工修正按 revision 锁定，后续 OCR 不会静默覆盖，过期推理结果不会显示；
+- 完整身份选择显示公开中文图鉴名称与 80x80 预览图，不再显示内部编号；
+- 可滚动、可复制的内存诊断日志保留 OCR 语义、地图快照、推理状态和异常堆栈；
 - 截图、OCR、修正、预测和终局均不写入文件；终局或退出立即清空本局内存；
 - 静态模型文件是唯一允许持久化的助手资产。
 
@@ -44,11 +47,11 @@ python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
 ```
 
-从 `latest-model-v6-v2.0.0-beta.4` 预发布解压五个模型文件后运行：
+从 `latest-model-v6-v2.0.0-beta.5` 预发布解压五个模型文件后运行：
 
 ```powershell
 auction-vision-assistant `
-  --models C:\path\to\latest-model-v6-v2.0.0-beta.4 `
+  --models C:\path\to\latest-model-v6-v2.0.0-beta.5 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -57,7 +60,7 @@ auction-vision-assistant `
 ```powershell
 auction-vision-assistant `
   --download-models `
-  --models .\models\latest-model-v6-v2.0.0-beta.4 `
+  --models .\models\latest-model-v6-v2.0.0-beta.5 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -71,6 +74,8 @@ auction-vision-assistant `
 达到阈值且通过图鉴品质/尺寸一致性检查的自动完整身份直接作为 OCR 身份证据，
 人工新增完整身份则必须在兼容图鉴列表中确认。这个 OCR 获取路径并不等价于私有
 结构化输入，因此公开融合结果仍是 beta、未校准且固定 `actionable=false`。
+条件重采样结果同样明确标为未校准，不会升级为自动出价依据。诊断日志只驻留
+当前进程内存，本局重置时继续保留，便于复制完整问题现场。
 
 旧视觉权重 Release 仍可独立验证：
 
@@ -183,7 +188,8 @@ python -m auction_moment_research.opponent_clustering \
 - 玩家昵称、自身账号、原始玩家 ID、精确时间、本机路径和源文件路径均已移除；
 - 对手研究只保留日期，足以复现按时间切分；
 - 结算、最终数量和身份属于赛后标签，不能伪装成决策时信息；
-- 原始图片、视频和协议证据仍只保存在私有采集工程中；
+- 对局截图、视频和协议证据仍只保存在私有采集工程中；人工身份选择所需的
+  120 张 80x80 图鉴缩略图是唯一公开的游戏图片子集；
 - Release 权重不包含训练图片，但仍会经过检查点元数据净化，防止训练路径和
   原始会话标识被二进制文件间接带出。
 
@@ -209,4 +215,5 @@ python -m auction_moment_research.opponent_clustering \
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - `data/v1/`、`reports/` 和 `results/`：CC BY 4.0，见
   [`DATA_LICENSE.md`](DATA_LICENSE.md)。
-- 第三方游戏名称、商标和未包含的原始资产不因本仓库获得任何授权。
+- 公开图鉴缩略图和第三方游戏名称、商标不受本仓库开源许可证授权；权利仍归
+  各自权利人，详见 `THIRD_PARTY_NOTICES.md`。

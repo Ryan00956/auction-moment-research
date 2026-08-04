@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from queue import Empty, Queue
 import threading
 import time
+import traceback
 
 import cv2
 import numpy as np
@@ -51,6 +52,7 @@ class CaptureOutcome:
     ocr: OcrCapture | None
     map_item_count: int
     errors: tuple[str, ...]
+    debug: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ class ScanOutcome:
     estimated_rows: int | None
     alignment_stable: bool
     errors: tuple[str, ...]
+    debug: tuple[str, ...] = ()
 
 
 class CapturePipeline:
@@ -97,6 +100,7 @@ class CapturePipeline:
             revision = self.store.reset()
             return CaptureOutcome(revision, True, None, 0, ())
         errors: list[str] = []
+        debug: list[str] = []
         ocr_capture = None
         if self.ocr is not None:
             try:
@@ -105,6 +109,7 @@ class CapturePipeline:
                 )
             except Exception as exc:
                 errors.append(f"OCR: {exc}")
+                debug.append("OCR capture failed\n" + traceback.format_exc())
         map_items = ()
         if self.vision is not None:
             try:
@@ -113,6 +118,7 @@ class CapturePipeline:
                 )
             except Exception as exc:
                 errors.append(f"vision: {exc}")
+                debug.append("Vision capture failed\n" + traceback.format_exc())
         revision = self.store.apply_capture(
             round_number=(
                 ocr_capture.round_number
@@ -124,7 +130,12 @@ class CapturePipeline:
             map_items=map_items,
         )
         return CaptureOutcome(
-            revision, False, ocr_capture, len(map_items), tuple(errors)
+            revision,
+            False,
+            ocr_capture,
+            len(map_items),
+            tuple(errors),
+            tuple(debug),
         )
 
     def _round_frame(self) -> np.ndarray:
@@ -151,6 +162,7 @@ class CapturePipeline:
 
         round_number = max(1, min(5, int(expected_round)))
         errors: list[str] = []
+        debug: list[str] = []
         frames: list[np.ndarray] = []
         top_reached = False
         bottom_reached = False
@@ -195,6 +207,7 @@ class CapturePipeline:
                 errors.append("达到滚动上限但未确认地图底部")
         except Exception as exc:
             errors.append(str(exc))
+            debug.append("Round map scan failed\n" + traceback.format_exc())
         finally:
             if performed_swipe:
                 try:
@@ -221,6 +234,7 @@ class CapturePipeline:
                             break
                 except Exception as exc:
                     errors.append(f"恢复地图顶部失败：{exc}")
+                    debug.append("Map top restore failed\n" + traceback.format_exc())
 
         ocr_capture = None
         map_items = ()
@@ -236,6 +250,7 @@ class CapturePipeline:
                         errors.append("轮次标题 OCR 未通过阈值，已按状态机轮次暂存")
                 except Exception as exc:
                     errors.append(f"OCR: {exc}")
+                    debug.append("Round OCR failed\n" + traceback.format_exc())
             if self.vision is not None:
                 try:
                     recognition = self.vision.recognize_viewports(frames)
@@ -246,6 +261,7 @@ class CapturePipeline:
                         errors.append("地图视口对齐置信度不足，请在左侧复核")
                 except Exception as exc:
                     errors.append(f"vision: {exc}")
+                    debug.append("Viewport recognition failed\n" + traceback.format_exc())
             revision = self.store.apply_capture(
                 round_number=round_number,
                 events=ocr_capture.events if ocr_capture is not None else (),
@@ -276,6 +292,7 @@ class CapturePipeline:
             estimated_rows=estimated_rows,
             alignment_stable=alignment_stable,
             errors=tuple(dict.fromkeys(errors)),
+            debug=tuple(dict.fromkeys(debug)),
         )
 
 
@@ -286,6 +303,7 @@ class MonitorUpdate:
     round_number: int
     message: str
     scan: ScanOutcome | None = None
+    details: tuple[str, ...] = ()
 
 
 class EphemeralStateMonitor:
@@ -362,9 +380,17 @@ class EphemeralStateMonitor:
         round_number: int,
         message: str,
         scan: ScanOutcome | None = None,
+        details: tuple[str, ...] = (),
     ) -> None:
         self._updates.put(
-            MonitorUpdate(kind, state, int(round_number), message, scan)
+            MonitorUpdate(
+                kind,
+                state,
+                int(round_number),
+                message,
+                scan,
+                tuple(details),
+            )
         )
 
     def _run_scan(self, round_number: int, state: ScreenState) -> None:
@@ -377,7 +403,14 @@ class EphemeralStateMonitor:
             if outcome.success
             else "扫描未完整完成，可在轮次主界面手动重扫"
         )
-        self._publish("scan_finished", state, round_number, message, outcome)
+        self._publish(
+            "scan_finished",
+            state,
+            round_number,
+            message,
+            outcome,
+            outcome.debug,
+        )
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -397,6 +430,7 @@ class EphemeralStateMonitor:
                         self._machine.state,
                         manual_round,
                         f"手动重扫失败：{exc}",
+                        details=(traceback.format_exc(),),
                     )
                 continue
             started = time.monotonic()
@@ -450,6 +484,7 @@ class EphemeralStateMonitor:
                     self._machine.state,
                     self._machine.round_number,
                     f"窗口监视失败：{exc}",
+                    details=(traceback.format_exc(),),
                 )
                 self._stop.wait(0.75)
             elapsed = time.monotonic() - started

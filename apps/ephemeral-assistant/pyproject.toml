@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auction-moment-assistant"
-version = "0.2.0b4"
+version = "0.2.0b5"
 description = "An ephemeral OCR and vision assistant for five-round auction research."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -42,4 +42,8 @@ py-modules = [
 ]
 
 [tool.setuptools.package-data]
-auction_moment_assistant = ["model-release.json"]
+auction_moment_assistant = [
+  "model-release.json",
+  "catalog-metadata.json",
+  "catalog_previews/*.png",
+]
