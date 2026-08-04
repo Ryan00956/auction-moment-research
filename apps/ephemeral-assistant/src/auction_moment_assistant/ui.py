@@ -20,6 +20,24 @@ from .runtime import (
 from .semantics import event_semantics
 
 
+MIN_MAIN_PANE_READY_WIDTH = 900
+MIN_MAP_PANE_WIDTH = 560
+MIN_REVIEW_PANE_WIDTH = 420
+INITIAL_SASH_RETRY_MS = 50
+INITIAL_SASH_MAX_ATTEMPTS = 12
+
+
+def preferred_main_sash(width: int) -> int | None:
+    """Return a safe initial split only after the paned window has real geometry."""
+    width = int(width)
+    if width < MIN_MAIN_PANE_READY_WIDTH:
+        return None
+    return max(
+        MIN_MAP_PANE_WIDTH,
+        min(int(width * 0.62), width - MIN_REVIEW_PANE_WIDTH),
+    )
+
+
 class AssistantWindow:
     def __init__(
         self,
@@ -36,6 +54,8 @@ class AssistantWindow:
         self.monitor = EphemeralStateMonitor(pipeline, store)
         self._prediction_future: Future | None = None
         self._log_entry_count = 0
+        self._initial_sash_attempts = 0
+        self._initial_sash_applied = False
 
         self.root = tk.Tk()
         self.root.title("Auction Moment · 半自动 OCR 预测助手")
@@ -221,9 +241,30 @@ class AssistantWindow:
         self._append_log("startup", "界面已启动；日志只保留在本进程内存中")
 
     def _set_initial_sashes(self) -> None:
+        if self._initial_sash_applied:
+            return
         self.root.update_idletasks()
+        target = preferred_main_sash(self.main_pane.winfo_width())
+        if target is None:
+            self._retry_initial_sash()
+            return
         try:
-            self.main_pane.sashpos(0, int(self.root.winfo_width() * 0.62))
+            self.main_pane.sashpos(0, target)
+            self.root.update_idletasks()
+            actual = self.main_pane.sashpos(0)
+        except tk.TclError:
+            return
+        if actual < MIN_MAP_PANE_WIDTH // 2:
+            self._retry_initial_sash()
+            return
+        self._initial_sash_applied = True
+
+    def _retry_initial_sash(self) -> None:
+        self._initial_sash_attempts += 1
+        if self._initial_sash_attempts > INITIAL_SASH_MAX_ATTEMPTS:
+            return
+        try:
+            self.root.after(INITIAL_SASH_RETRY_MS, self._set_initial_sashes)
         except tk.TclError:
             return
 

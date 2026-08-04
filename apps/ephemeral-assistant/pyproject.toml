@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auction-moment-assistant"
-version = "0.2.0b5"
+version = "0.2.0b6"
 description = "An ephemeral OCR and vision assistant for five-round auction research."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -47,11 +47,11 @@ python -m pip install -e .
 python -m pip install -e .\apps\ephemeral-assistant
 ```
 
-从 `latest-model-v6-v2.0.0-beta.5` 预发布解压五个模型文件后运行：
+从 `latest-model-v6-v2.0.0-beta.6` 预发布解压五个模型文件后运行：
 
 ```powershell
 auction-vision-assistant `
-  --models C:\path\to\latest-model-v6-v2.0.0-beta.5 `
+  --models C:\path\to\latest-model-v6-v2.0.0-beta.6 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
@@ -60,7 +60,7 @@ auction-vision-assistant `
 ```powershell
 auction-vision-assistant `
   --download-models `
-  --models .\models\latest-model-v6-v2.0.0-beta.5 `
+  --models .\models\latest-model-v6-v2.0.0-beta.6 `
   --treasures .\data\v1\core\treasures.csv
 ```
 
