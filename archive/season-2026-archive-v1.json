@@ -1,0 +1,86 @@
+{
+  "schema_version": "auction-moment-public-archive-v1",
+  "archive_id": "season-2026-archive-v1",
+  "archive_date": "2026-08-06",
+  "project_status": "hibernating",
+  "event_status": "offline",
+  "canonical_source_ref": "season-2026-archive-v1",
+  "frozen_components": {
+    "public_dataset": "auction-moment-public-v1",
+    "research_package": "0.1.0",
+    "assistant_package": "0.2.0b6",
+    "model_release": "latest-model-v6-v2.0.0-beta.6"
+  },
+  "capability_boundary": {
+    "formal_full_match_end_to_end_completed": false,
+    "fresh_prospective_validation_completed": false,
+    "production_enabled": false,
+    "automatic_bid_execution_in_public_project": false,
+    "all_assistant_outputs_actionable": false,
+    "primary_uses": [
+      "model research",
+      "anonymized public data",
+      "reproducible analysis",
+      "experimental OCR and vision interface"
+    ]
+  },
+  "component_manifests": [
+    {
+      "path": "data/v1/manifest.json",
+      "bytes": 9460,
+      "sha256": "fe1eb6a9688b064532ec4175e19cc7aa3ad9978fb5cea3b27aca79aa2bca6281"
+    },
+    {
+      "path": "models/assistant-release-v2.json",
+      "bytes": 1279,
+      "sha256": "c996bbcf9aa8fdb6e31dd8427005662adc37aedeb823ac7581ee82107c6ee407"
+    },
+    {
+      "path": "models/vision-release-v1.json",
+      "bytes": 1442,
+      "sha256": "b368743cace0e380fd417a185535ea55b3a96608fcce57687e5bd67473da8bf3"
+    },
+    {
+      "path": "results/world-model-training-manifest.json",
+      "bytes": 469,
+      "sha256": "aa02edfd9d1882fd26526d3e9612e66a6aa9e72e45503d4ad155a86f6806e431"
+    },
+    {
+      "path": "requirements-lock.txt",
+      "bytes": 82,
+      "sha256": "412079854ec4711f6bc494b983ea6db240169737cc366ac1d651dd77cb2d1bbe"
+    },
+    {
+      "path": "requirements-runtime-win-py312.txt",
+      "bytes": 1111,
+      "sha256": "8e7e61c9a82a7bff5acad74f1658f20ad33168559aba65b9140f58885fe6008e"
+    },
+    {
+      "path": "scripts/install_archive.ps1",
+      "bytes": 3129,
+      "sha256": "5d1a24a92e38a07d7ab73b13262af4817f203ef4b8b5dfa4555f0c43274833c9"
+    },
+    {
+      "path": "pyproject.toml",
+      "bytes": 857,
+      "sha256": "e60a1eb56dd6a11248f8c6f9ecc041fd5787729aab1e7ef7f27a2540685031b8"
+    },
+    {
+      "path": "apps/ephemeral-assistant/pyproject.toml",
+      "bytes": 1254,
+      "sha256": "48619bffd1a46185a78b7960af25f0b3e387c6b6f47212aa4bfffd3acf164e0e"
+    }
+  ],
+  "public_exclusions": [
+    "raw screenshots and video",
+    "packet captures and protocol codebooks",
+    "player identity and private timestamps",
+    "private filesystem and device paths",
+    "decrypted third-party assets and binaries",
+    "settlement ingestion and automatic bidding code"
+  ],
+  "rights_constraints": {
+    "catalog_previews": "120 in-game catalog thumbnails are not licensed by the project; see THIRD_PARTY_NOTICES.md"
+  },
+  "resume_runbook": "RETURN_RUNBOOK.md"
+}

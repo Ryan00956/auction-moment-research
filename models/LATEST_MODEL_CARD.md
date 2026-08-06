@@ -43,6 +43,12 @@ The candidate remains frozen for future blind validation and is not a
 production-enabled model. Releasing it makes the exact frozen candidate usable
 and developable; it does not upgrade its validation status.
 
+The public OCR/vision assistant also did not complete a full formal live match
+from lobby detection through all five rounds and match end. Component tests,
+release-asset verification, and a UI layout probe must not be interpreted as
+end-to-end live validation. The archived assistant is therefore a research
+prototype and restoration baseline, not a completed real-time inference system.
+
 ## Loading safety
 
 Joblib/pickle formats can execute code while loading. The assistant only loads
