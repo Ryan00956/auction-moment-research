@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +44,7 @@ IGNORED_SCAN_DIRECTORIES = {
     "dist",
     "__pycache__",
 }
+ARCHIVE_DESCRIPTOR = REPOSITORY_ROOT / "archive" / "season-2026-archive-v1.json"
 
 
 def sha256_file(path: Path) -> str:
@@ -83,9 +85,13 @@ def verify_result_manifests(errors: list[str]) -> None:
                 errors.append(f"missing result: {path.relative_to(REPOSITORY_ROOT)}")
                 continue
             if sha256_file(path) != expected["sha256"]:
-                errors.append(f"result sha256 mismatch: {path.relative_to(REPOSITORY_ROOT)}")
+                errors.append(
+                    f"result sha256 mismatch: {path.relative_to(REPOSITORY_ROOT)}"
+                )
             if path.stat().st_size != expected["bytes"]:
-                errors.append(f"result byte count mismatch: {path.relative_to(REPOSITORY_ROOT)}")
+                errors.append(
+                    f"result byte count mismatch: {path.relative_to(REPOSITORY_ROOT)}"
+                )
 
 
 def verify_repository_files(errors: list[str]) -> None:
@@ -158,6 +164,78 @@ def verify_assistant_privacy_boundary(errors: list[str]) -> None:
                 )
 
 
+def verify_archive_contract(errors: list[str]) -> None:
+    descriptor = json.loads(ARCHIVE_DESCRIPTOR.read_text(encoding="utf-8"))
+    if descriptor.get("archive_id") != "season-2026-archive-v1":
+        errors.append("archive descriptor id mismatch")
+    if descriptor.get("project_status") != "hibernating":
+        errors.append("archive project status must be hibernating")
+    if descriptor.get("event_status") != "offline":
+        errors.append("archive event status must be offline")
+
+    boundary = descriptor.get("capability_boundary") or {}
+    for field in (
+        "formal_full_match_end_to_end_completed",
+        "fresh_prospective_validation_completed",
+        "production_enabled",
+        "automatic_bid_execution_in_public_project",
+        "all_assistant_outputs_actionable",
+    ):
+        if boundary.get(field) is not False:
+            errors.append(f"archive capability must keep {field}=false")
+
+    for expected in descriptor.get("component_manifests") or []:
+        relative = str(expected.get("path") or "")
+        path = REPOSITORY_ROOT / relative
+        if not path.is_file():
+            errors.append(f"archive component manifest missing: {relative}")
+            continue
+        if path.stat().st_size != expected.get("bytes"):
+            errors.append(f"archive component byte count mismatch: {relative}")
+        if sha256_file(path) != expected.get("sha256"):
+            errors.append(f"archive component sha256 mismatch: {relative}")
+
+    readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    status = (REPOSITORY_ROOT / "STATUS.md").read_text(encoding="utf-8")
+    required_disclosures = (
+        "暂时休眠",
+        "没有在正式活动环境中完成过一整局",
+        "actionable=false",
+    )
+    for disclosure in required_disclosures:
+        if disclosure not in readme and disclosure not in status:
+            errors.append(f"missing archive disclosure: {disclosure}")
+
+
+def verify_git_history_paths(errors: list[str]) -> None:
+    completed = subprocess.run(
+        ["git", "log", "--all", "--name-only", "--pretty=format:"],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        errors.append("unable to inspect git history paths")
+        return
+    for raw_path in completed.stdout.splitlines():
+        relative = raw_path.strip().replace("\\", "/")
+        if not relative:
+            continue
+        allowed_catalog_preview = (
+            relative.startswith(
+                "apps/ephemeral-assistant/src/auction_moment_assistant/"
+                "catalog_previews/"
+            )
+            and CATALOG_PREVIEW_NAME.fullmatch(Path(relative).name) is not None
+        )
+        if (
+            Path(relative).suffix.lower() in FORBIDDEN_EXTENSIONS
+            and not allowed_catalog_preview
+        ):
+            errors.append(f"forbidden extension in git history: {relative}")
+
+
 def verify_public_artifacts(errors: list[str]) -> None:
     for root_name in PUBLIC_ARTIFACT_ROOTS:
         root = REPOSITORY_ROOT / root_name
@@ -167,19 +245,34 @@ def verify_public_artifacts(errors: list[str]) -> None:
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
-                errors.append(f"non-UTF-8 artifact: {path.relative_to(REPOSITORY_ROOT)}")
+                errors.append(
+                    f"non-UTF-8 artifact: {path.relative_to(REPOSITORY_ROOT)}"
+                )
                 continue
             if RAW_SESSION_ID.search(text):
-                errors.append(f"raw session id found: {path.relative_to(REPOSITORY_ROOT)}")
+                errors.append(
+                    f"raw session id found: {path.relative_to(REPOSITORY_ROOT)}"
+                )
             if ABSOLUTE_WINDOWS_PATH.search(text):
-                errors.append(f"absolute Windows path found: {path.relative_to(REPOSITORY_ROOT)}")
+                errors.append(
+                    f"absolute Windows path found: {path.relative_to(REPOSITORY_ROOT)}"
+                )
             if EMAIL.search(text):
                 errors.append(f"email found: {path.relative_to(REPOSITORY_ROOT)}")
 
-    opponent_header = (REPOSITORY_ROOT / "data" / "v1" / "core" / "opponent_bids.csv").read_text(
-        encoding="utf-8"
-    ).splitlines()[0].split(",")
-    forbidden_columns = {"player_name", "name", "source_file", "captured_at", "created_at"}
+    opponent_header = (
+        (REPOSITORY_ROOT / "data" / "v1" / "core" / "opponent_bids.csv")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+        .split(",")
+    )
+    forbidden_columns = {
+        "player_name",
+        "name",
+        "source_file",
+        "captured_at",
+        "created_at",
+    }
     leaked = sorted(forbidden_columns.intersection(opponent_header))
     if leaked:
         errors.append(f"private opponent columns found: {leaked}")
@@ -193,6 +286,8 @@ def main() -> int:
     verify_result_manifests(errors)
     verify_public_artifacts(errors)
     verify_assistant_privacy_boundary(errors)
+    verify_archive_contract(errors)
+    verify_git_history_paths(errors)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

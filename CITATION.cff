@@ -2,11 +2,12 @@ cff-version: 1.2.0
 message: "If you use this dataset or code, please cite this repository and the exact dataset version."
 title: "Auction Moment Research"
 type: software
-version: 0.1.0
-date-released: 2026-08-04
+version: "season-2026-archive-v1"
+date-released: 2026-08-06
 authors:
   - family-names: "Helenanana"
 license: Apache-2.0
+repository-code: "https://github.com/Ryan00956/auction-moment-research"
 keywords:
   - auction
   - reproducible-research

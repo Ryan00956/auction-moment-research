@@ -11,8 +11,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -32,3 +34,30 @@ jobs:
           --input data/v1/core/treasures.csv
           --output "${{ runner.temp }}/world-model-v1.json"
           --manifest "${{ runner.temp }}/world-model-manifest.json"
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install build==1.5.0
+      - name: Build and install both wheels without resolving runtime dependencies
+        shell: pwsh
+        run: |
+          $wheelDir = Join-Path $env:RUNNER_TEMP "wheels"
+          python -m build --wheel --outdir $wheelDir .
+          python -m build --wheel --outdir $wheelDir .\apps\ephemeral-assistant
+          $smoke = Join-Path $env:RUNNER_TEMP "wheel-smoke"
+          python -m venv $smoke
+          $python = Join-Path $smoke "Scripts\python.exe"
+          $research = Get-ChildItem $wheelDir -Filter "auction_moment_research-*.whl" | Select-Object -First 1
+          $assistant = Get-ChildItem $wheelDir -Filter "auction_moment_assistant-*.whl" | Select-Object -First 1
+          & $python -m pip install --no-deps $research.FullName $assistant.FullName
+          & $python -c "from importlib.metadata import version; assert version('auction-moment-research') == '0.1.0'; assert version('auction-moment-assistant') == '0.2.0b6'"
+      - run: python scripts/verify_public_release.py

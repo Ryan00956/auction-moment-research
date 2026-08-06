@@ -1,5 +1,9 @@
 # Security and privacy
 
+The project is hibernating as of 2026-08-06. Its public real-time assistant is
+an incomplete research prototype and did not finish a formal full-match
+end-to-end validation. Hibernation does not relax the privacy boundary below.
+
 Please do not open a public issue containing private player data, raw captures,
 credentials, local paths, or a method for reversing published pseudonyms.
 
